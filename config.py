@@ -1,0 +1,6 @@
+WIDTH = 1920
+HEIGHT = 1080
+FPS = 240
+MOVE_SPEED = 2
+ADRESS = ('localhost', 8800)
+COLOR = 'FF0000'
