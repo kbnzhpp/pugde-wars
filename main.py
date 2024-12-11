@@ -10,16 +10,14 @@ def main():
 
     clock = pygame.time.Clock()
 
-    player_1 = Player(340, 200)
-    player_2 = Player(340, 500) 
-    player_3 = Player(340, 800) 
-    player_4 = Player(1630, 200) 
-    player_5 = Player(1630, 500) 
-    player_6 = Player(1630, 800) 
+    players = pygame.sprite.Group()
+    player_1 = Player(340, 200, players)
+    player_2 = Player(340, 500, players)
+    player_3 = Player(340, 800, players)
+    player_4 = Player(1620, 200, players)
+    player_5 = Player(1620, 500, players)
+    player_6 = Player(1620, 800, players)
     
-    players_left = list((player_1, player_2, player_3))
-    players_right = list((player_4, player_5, player_6))
-    players = [] # Список всех игроков
 
     bg_surf = pygame.image.load("data/images/background.jpg").convert()
     bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
@@ -32,16 +30,13 @@ def main():
     
     left = right = up = down = False
 
-    
     while True:
         clock.tick(FPS) # fps change
-        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 # client.sock.close()
                 exit()
             if event.type == pygame.KEYDOWN: # Движение
-                print(player_1.rect, center_rect)
                 if event.key == ord('w'):
                     up = True
                 if event.key == ord('a'):
@@ -50,6 +45,8 @@ def main():
                     down = True
                 if event.key == ord('d'):
                     right = True
+                if event.key == ord('q'):
+                    print('hook')
             
             if event.type == pygame.KEYUP: # Остановка движения
                 if event.key == ord('w'):
@@ -60,27 +57,16 @@ def main():
                     down = False
                 if event.key == ord('d'):
                     right = False
-        
+
+
         screen.blit(bg_surf, (0,0))     
         screen.blit(center_surf, center_rect) 
 
-        for i in players_left:
-            screen.blit(i.image, i.rect)
-            players.append(i)
-        for j in players_right:
-            screen.blit(j.image, j.rect)  
-            players.append(i)
-
+        players.draw(screen)
         
-        player_4.move(left, right, up, down, center_rect)
-        
-        
-
+        player_1.move(left, right, up, down, center_rect, players, screen)
         pygame.display.update() # updating display
-
 
 if __name__ == '__main__':
     main()
-
-# (714, 793) (1154, 787)
 
