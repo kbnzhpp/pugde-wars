@@ -2,25 +2,38 @@ import pygame
 from config import *
 from time import *
 
+RESPAWN_EVENT = pygame.USEREVENT + 1
+
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, group):
+    def __init__(self, x, y, group, team):
         super().__init__()
+        self.id_p = 0
+        self.alive = True
         self.speedx = 0  # скорость перемещения. 0 - стоять на месте
         self.speedy = 0
-        self.image_left = pygame.image.load("data/images/pudge_left.png")
-        self.image_right = pygame.image.load("data/images/pudge_right.png")
+        self.spawn_x = x
+        self.spawn_y = y
+        
+        # Добавим проверку загрузки изображений
+        try:
+            self.image_left = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+            self.image_right = pygame.image.load("data/images/pudge_right.png").convert_alpha()
+        except pygame.error as e:
+            # Создаем временное изображение если файлы не найдены
+            self.image_left = pygame.Surface((100, 80))
+            self.image_left.fill((255, 0, 0))  # Красный прямоугольник
+            self.image_right = self.image_left.copy()
+            
         self.image = self.image_left
-        self.rect = self.image_left.get_rect(center = (x, y))
+        self.rect = self.image.get_rect(center = (x, y))
         self.hitbox = pygame.Rect(x + 50, y + 40, 100, 80)
         self.hitbox.center = (x, y)
         self.hook = Hook(self)
+        self.team = team
+        self.group = group
         self.add(group)
         
     def move(self, left, right, up, down, center_rect, players):
-
-        # Speed changes
-        
-
         if left:
             self.speedx = -MOVE_SPEED
             self.image = self.image_left
@@ -41,9 +54,11 @@ class Player(pygame.sprite.Sprite):
             self.speedx = 0
             self.speedy = 0
 
-        self.rect.center = self.hitbox.center
         self.hitbox.x += self.speedx
         self.hitbox.y += self.speedy
+        
+        # Обновляем позицию rect после изменения hitbox
+        self.rect.center = self.hitbox.center
 
         self.collide(center_rect, players)
 
@@ -59,7 +74,6 @@ class Player(pygame.sprite.Sprite):
 
         for collision in players:
             if collision != self and self.hitbox.colliderect(collision.hitbox):
-
                 # Рассчитываем глубину столкновения
                 dx_left = collision.hitbox.right - self.hitbox.left  # Слева
                 dx_right = self.hitbox.right - collision.hitbox.left  # Справа
@@ -75,7 +89,7 @@ class Player(pygame.sprite.Sprite):
                     # Горизонтальное столкновение
                     if dx_left < dx_right:  # Удар справа
                         self.hitbox.left = collision.hitbox.right
-                    else:  # Удар слева
+                    else:  # У��ар слева
                         self.hitbox.right = collision.hitbox.left
                     self.speedx = 0
                 else:
@@ -85,6 +99,16 @@ class Player(pygame.sprite.Sprite):
                     else:  # Удар сверху
                         self.hitbox.bottom = collision.hitbox.top
                     self.speedy = 0
+
+    def kill(self):
+        self.alive = False
+        
+    def respawn(self):
+        # Add player back to the group and reset position
+        self.rect.center = (self.spawn_x, self.spawn_y)
+        self.hitbox.center = (self.spawn_x, self.spawn_y)
+        self.add(self.group)
+        self.alive = True
 
 class Hook(pygame.sprite.Sprite):
     def __init__(self, player):
@@ -110,7 +134,7 @@ class Hook(pygame.sprite.Sprite):
             self.pos_x, self.pos_y = hook_start
             self.rect.center = hook_start
         
-    def move(self, players):
+    def move(self, players, team_kills):
         if self.active and self.target_position:
             # Calculate the direction vector
             target_x, target_y = self.target_position
@@ -135,7 +159,7 @@ class Hook(pygame.sprite.Sprite):
                 self.returning = False
                 return
             
-            if (abs(dx) <= HOOK_SPEED and abs(dy) <= HOOK_SPEED) or traveled_distance >= HOOK_RADIUS or self.collide(players):
+            if (abs(dx) <= HOOK_SPEED and abs(dy) <= HOOK_SPEED) or traveled_distance >= HOOK_RADIUS or self.collide(players, team_kills):
                 self.rect.center = self.player.rect.center   # Snap to the exact position
                 self.returning = True
                 self.active = False
@@ -152,7 +176,7 @@ class Hook(pygame.sprite.Sprite):
             
         elif self.returning:
             self.move_backwards()
-        self.collide(players)
+        self.collide(players, team_kills)
 
     def move_backwards(self):
         # Calculate direction back to player
@@ -192,11 +216,22 @@ class Hook(pygame.sprite.Sprite):
                 10  # Line thickness
             )
     
-    def collide(self, players):
+    def collide(self, players, team_kills):
         for player in players:
-            if self.rect.collidepoint(player.hitbox.center) and self.player != player:
-                player.kill()  # Remove the collided player
+            if self.rect.colliderect(player.hitbox) and self.player != player and self.player.team != player.team and player.alive:
+                player.id_p = id(player)
+                player.kill()
+    
+                # Ensure team_kills has the current team key
+                if self.player.team not in team_kills:
+                    team_kills[self.player.team] = 0
+    
+                team_kills[self.player.team] += 1
                 self.active = False  # Stop hook movement
-                self.returning = True  # Start return movement
-                return True  
-        return False 
+                self.returning = True
+    
+                event_type = pygame.USEREVENT + (player.id_p % 1000)
+                pygame.time.set_timer(event_type, 2500)
+    
+                return True
+        return False
