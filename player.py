@@ -42,7 +42,6 @@ class Player(pygame.sprite.Sprite):
         for player in players:
             if player != self and player.alive and self.hitbox.colliderect(player.hitbox):
                 return True
-                
         return False
 
     def move(self, left, right, up, down, center_rect, players):
@@ -187,7 +186,7 @@ class Hook(pygame.sprite.Sprite):
             # Проверяем попадание в других игроков
             for player in self.player.group:
                 if player != self.player and player.alive and player.team != self.player.team:
-                    if self.rect.colliderect(player.rect):
+                    if self.rect.colliderect(player.hitbox):
                         self.hit_player_id = player.id_p  # Только сохраняем ID
                         self.returning = True
                         self.active = False
@@ -210,7 +209,7 @@ class Hook(pygame.sprite.Sprite):
             self.pos_x += direction_x * (HOOK_SPEED * 3)
             self.pos_y += direction_y * (HOOK_SPEED * 3)
             self.rect.center = (int(self.pos_x), int(self.pos_y))
-    
+        
     def draw_chain(self, screen):
         if self.active or self.returning:
             pygame.draw.line(

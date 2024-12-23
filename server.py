@@ -11,7 +11,8 @@ class GameServer:
         self.players = {}  # {player_id: player_data}
         self.next_player_id = 1
         self.lock = Lock()
-        self.team_kills = {1: 0, 2: 0}  # Добавляем счетчик киллов
+        self.team_kills = {1: 0, 2: 0}
+        self.game_over = False
         print("[INIT] Сервер создан на 0.0.0.0:5555")
 
     def handle_client(self, conn, addr):
@@ -44,13 +45,14 @@ class GameServer:
                     
                     with self.lock:
                         # Обработка киллов
-                        kill_event = player_data.get("kill_event")
-                        if kill_event and isinstance(kill_event, dict):
-                            killer_team = kill_event.get("killer_team")
-                            if killer_team in self.team_kills:
-                                self.team_kills[killer_team] += 1
-                                print(f"[KILL] Team {killer_team} score increased to {self.team_kills[killer_team]}")
+                        if "kill_event" in player_data:
+                            killer_team = self.players[player_data["killer_id"]]["team"]
+                            self.team_kills[killer_team] += 1
                         
+                        if "game_win" in player_data:
+                            print(f"[DEBUG] Получен сигнал о победе от клиента {addr}")
+                            self.game_over = True
+
                         # Обновляем данные игрока
                         player_data["id"] = player_id
                         self.players[player_id] = player_data
@@ -58,7 +60,8 @@ class GameServer:
                         # Отправляем обновленное состояние всем клиентам
                         game_state = {
                             "players": list(self.players.values()),
-                            "team_kills": self.team_kills
+                            "team_kills": self.team_kills,  # Добавляем счетчик в состояние
+                            "game_over": self.game_over
                         }
                         state_data = pickle.dumps(game_state)
                         
@@ -109,7 +112,7 @@ class GameServer:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Добавляем эту опцию
         server.bind(("0.0.0.0", 5555))
-        server.listen(5)
+        server.listen(6)
         print("[START] Сервер запущен...")
         
         while True:
