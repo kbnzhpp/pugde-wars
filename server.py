@@ -49,10 +49,11 @@ class GameServer:
                             killer_team = self.players[player_data["killer_id"]]["team"]
                             self.team_kills[killer_team] += 1
                         
-                        if "game_win" in player_data:
+                        if "game_over" in player_data:
                             print(f"[DEBUG] Получен сигнал о победе от клиента {addr}")
                             self.game_over = True
-
+                            break
+                        
                         # Обновляем данные игрока
                         player_data["id"] = player_id
                         self.players[player_id] = player_data

@@ -50,6 +50,13 @@ def reset_game():
     return center_rect
 
 def main():
+    def draw_score():
+        font = pygame.font.Font(None, 36)
+        team1_text = font.render(f"Team 1: {team_kills[1]}", True, (255, 0, 0))
+        team2_text = font.render(f"Team 2: {team_kills[2]}", True, (0, 0, 255))
+        screen.blit(team1_text, (10, 10))
+        screen.blit(team2_text, (WIDTH - 150, 10))
+
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('dota 3')
@@ -103,22 +110,15 @@ def main():
     
     left = right = up = down = show_hook_radius = False
 
-    game_over = False
-    winning_team = None
-    win_display_timer = 0
-
-    # Добавляем отрисовку счета
-    def draw_score():
-        font = pygame.font.Font(None, 36)
-        team1_text = font.render(f"Team 1: {team_kills[1]}", True, (255, 0, 0))
-        team2_text = font.render(f"Team 2: {team_kills[2]}", True, (0, 0, 255))
-        screen.blit(team1_text, (10, 10))
-        screen.blit(team2_text, (WIDTH - 150, 10))
-
     # Инициализация перед основным циклом
     team_kills = {1: 0, 2: 0}  # Начальные значения
     game_state = {}  # Инициализируем пустой game_state
-    
+    if game_state and "game_over" in game_state:
+        game_over = game_state["game_over"]
+    else:
+        game_over = False
+    winning_team = None
+
     try:
         while True:
             clock.tick(FPS)
@@ -208,46 +208,26 @@ def main():
 
             for team, kills in team_kills.items():
                 if kills >= WIN_CONDITION:
-                    game_over = {"game_over" : True}
-                    sock.sendall(pickle.dumps(game_over))
+                    print(f"[DEBUG] Team {team} wins!")
+                    game_over = True
+                    winning_team = team
+                    win_data = {
+                        'game_over' : game_over,
+                        'winning_team' : winning_team
+                    }
+                    sock.sendall(pickle.dumps(win_data))
+                    print(f"[DEBUG] Отправляем сигнал о победе на сервер")
+                    break
 
-                    #winning_team = team
-                    #win_display_timer = pygame.time.get_ticks()  # Инициализируем локально
-                    ## Отправляем сигнал о победе на сервер
-                    #win_data = {
-                    #    "game_win": True,
-                    #    "winning_team": team,
-                    #    "win_time": win_display_timer
-                    #}
-                    #sock.sendall(pickle.dumps(win_data))
-                    #print(f"[DEBUG] Отправляем сигнал о победе на сервер")
-                    #break
+            if game_over:
+                print('Игра окончена')
 
-            if "game_over" in game_state and game_state["game_over"]:
-                print(f"[DEBUG] game_over: {game_over}, game_state: {game_state}")
-                
                 font = pygame.font.Font(None, 100)
                 message = f"Team {winning_team} Wins!"
                 text = font.render(message, True, (255, 255, 255))
                 text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-                
                 screen.blit(text, text_rect)
-                
-                # Отправляем сигнал для рестарта игры
-                restart_data = {"restart_game": True}
-                sock.sendall(pickle.dumps(restart_data))
-                
-                print(f"[DEBUG] Отправляем сигнал для рестарта игры")
-                # Сбрасываем все переменные
-                game_over = False
-                team_kills = {1: 0, 2: 0}
-                game_state = {}
-                
-                # Респавним локального игрока
-                spawn_data = get_spawn_position(local_player.id_p)
-                local_player.rect.center = spawn_data["pos"]
-                local_player.alive = True
-                local_player.respawn_timer = 0
+
 
             pygame.display.update()
 
@@ -266,6 +246,7 @@ def main():
                                 # Обновляем team_kills из данных сервера
                                 if "team_kills" in game_state:
                                     team_kills = game_state["team_kills"]
+                                    print(f"[DEBUG] team_kills: {team_kills}")
                                 else:
                                     print("[DEBUG] team_kills отсутствует в данных сервера")
                                 

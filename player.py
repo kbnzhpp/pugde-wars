@@ -92,11 +92,9 @@ class Player(pygame.sprite.Sprite):
         """Убивает игрока и запускает таймер респавна"""
         if self.just_respawned:
             return
-        print(f"[KILL] Игрок {self.id_p} убит игроком {self.last_hit_by}")
         self.alive = False
         if self.respawn_timer == 0:
             self.respawn_timer = pygame.time.get_ticks()
-            print(f"[DEBUG] Установлен respawn_timer: {self.respawn_timer}")
         self.hook.active = False
         self.hook.returning = False
         self.hook.rect.center = self.rect.center
