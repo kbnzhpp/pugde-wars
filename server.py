@@ -2,72 +2,124 @@ import socket
 import pickle
 from threading import Thread, Lock
 
-HOST = "192.168.1.135"  # Измените на ваш IP при необходимости
+HOST = "0.0.0.0"  # Измените на ваш IP при необходимости
 PORT = 5555
 
 class GameServer:
     def __init__(self):
-        self.clients = []
-        self.players = {}
-        self.lock = Lock()
+        self.clients = {}  # {conn: player_id}
+        self.players = {}  # {player_id: player_data}
         self.next_player_id = 1
-        print("Сервер инициализирован")
-        
+        self.lock = Lock()
+        self.team_kills = {1: 0, 2: 0}  # Добавляем счетчик киллов
+        print("[INIT] Сервер создан на 0.0.0.0:5555")
+
     def handle_client(self, conn, addr):
-        player_id = self.next_player_id
-        self.next_player_id += 1
-        print(f"Новый игрок подключился. ID: {player_id}")
-        
+        player_id = None
         try:
+            # Назначаем ID новому клиенту
+            with self.lock:
+                player_id = self.next_player_id
+                self.next_player_id += 1
+                self.clients[conn] = player_id
+                print(f"[NEW] Клиент {addr} получил ID: {player_id}")
+            
+            # Отправляем ID клиенту
+            init_data = {"your_id": player_id}
+            conn.sendall(pickle.dumps(init_data))
+            
             while True:
                 try:
                     data = conn.recv(4096)
                     if not data:
+                        print(f"[DISCONNECT] Клиент {addr} отключился (нет данных)")
                         break
                         
                     player_data = pickle.loads(data)
-                    print(f"Получены данные от игрока {player_id}: {player_data}")
+                    
+                    # Проверяем на отключение
+                    if isinstance(player_data, dict) and player_data.get("disconnect"):
+                        print(f"[DISCONNECT] Клиент {addr} отправил сигнал отключения")
+                        break
                     
                     with self.lock:
-                        self.players[player_data["id"]] = player_data
-                        game_state = {
-                            "players": list(self.players.values())
-                        }
-                        print(f"Отправка состояния игры: {game_state}")
-                        self.broadcast(game_state)
+                        # Обработка киллов
+                        kill_event = player_data.get("kill_event")
+                        if kill_event and isinstance(kill_event, dict):
+                            killer_team = kill_event.get("killer_team")
+                            if killer_team in self.team_kills:
+                                self.team_kills[killer_team] += 1
+                                print(f"[KILL] Team {killer_team} score increased to {self.team_kills[killer_team]}")
                         
-                except (EOFError, pickle.UnpicklingError) as e:
-                    print(f"Ошибка обработки данных от {addr}: {e}")
+                        # Обновляем данные игрока
+                        player_data["id"] = player_id
+                        self.players[player_id] = player_data
+                        
+                        # Отправляем обновленное состояние всем клиентам
+                        game_state = {
+                            "players": list(self.players.values()),
+                            "team_kills": self.team_kills
+                        }
+                        state_data = pickle.dumps(game_state)
+                        
+                        disconnected = []
+                        for client_conn, client_id in self.clients.items():
+                            try:
+                                client_conn.sendall(state_data)
+                            except:
+                                print(f"[ERROR] Не удалось отправить данные клиенту {client_id}")
+                                disconnected.append(client_conn)
+                        
+                        # Удаляем отключившихся клиентов
+                        for client_conn in disconnected:
+                            self.remove_client(client_conn)
+                                    
+                except (pickle.UnpicklingError, EOFError) as e:
+                    print(f"[ERROR] Ошибка данных от {addr}: {e}")
                     break
                     
+        except Exception as e:
+            print(f"[ERROR] Ошибка подключения {addr}: {e}")
+            
         finally:
-            print(f"Игрок {player_id} отключился")
-            conn.close()
-            self.clients.remove(conn)
-            with self.lock:
+            # Удаляем отключившегося клиента
+            if player_id is not None:
+                self.remove_client(conn)
+                print(f"[CLEANUP] Клиент {addr} (ID: {player_id}) удален")
+                print(f"[STATUS] Активные клиенты: {self.clients}")
+                print(f"[STATUS] Активные игроки: {self.players}")
+
+    def remove_client(self, conn):
+        """Удаляет клиента и его данные"""
+        with self.lock:
+            if conn in self.clients:
+                player_id = self.clients[conn]
+                # Удаляем данные игрока
                 if player_id in self.players:
                     del self.players[player_id]
-
-    def broadcast(self, data):
-        """Отправка данных всем подключенным клиентам"""
-        serialized_data = pickle.dumps(data)
-        for client in self.clients[:]:
-            try:
-                client.sendall(serialized_data)
-            except:
-                self.clients.remove(client)
+                # Удаляем связь сокет-ID
+                del self.clients[conn]
+                try:
+                    conn.close()
+                except:
+                    pass
+                print(f"[REMOVE] Удален клиент с ID {player_id}")
 
     def start(self):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.bind((HOST, PORT))
-        server.listen()
-        print(f"Сервер запущен на {HOST}:{PORT}")
-
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Добавляем эту опцию
+        server.bind(("0.0.0.0", 5555))
+        server.listen(5)
+        print("[START] Сервер запущен...")
+        
         while True:
-            conn, addr = server.accept()
-            print(f"Новое подключение: {addr}")
-            self.clients.append(conn)
-            Thread(target=self.handle_client, args=(conn, addr)).start()
+            try:
+                conn, addr = server.accept()
+                print(f"[CONNECT] Новое подключение: {addr}")
+                Thread(target=self.handle_client, args=(conn, addr)).start()
+            except Exception as e:
+                print(f"[ERROR] Ошибка при принятии подключения: {e}")
 
 if __name__ == "__main__":
-    GameServer().start()
+    server = GameServer()
+    server.start()

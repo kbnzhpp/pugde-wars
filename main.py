@@ -3,65 +3,95 @@ from config import *
 from player import Player
 import socket
 import pickle
+import sys
 
+"26.140.237.173"
 def serialize_player_data(player):
-    """Создает словарь только с сериализуемыми данными игрока"""
+    """Создает словарь с данными игрока"""
+    # Сбрасываем hook_hit_player если цель неуязвима или мертва
+    if player.hook.hit_player_id is not None:
+        target_player = next((p for p in player.groups()[0] if p.id_p == player.hook.hit_player_id), None)
+        if target_player and (target_player.invulnerable or not target_player.alive):
+            player.hook.hit_player_id = None
+            
     return {
-        "id": id(player),
-        "x": player.hitbox.x,
-        "y": player.hitbox.y,
+        "id": player.id_p,
+        "x": int(player.rect.centerx),
+        "y": int(player.rect.centery),
         "team": player.team,
-        "hook_active": player.hook.active,
-        "hook_returning": player.hook.returning,
         "alive": player.alive,
-        "hook_x": player.hook.rect.x if player.hook.active or player.hook.returning else None,
-        "hook_y": player.hook.rect.y if player.hook.active or player.hook.returning else None
+        "respawn_timer": player.respawn_timer,
+        "hook_active": player.hook.active if player.alive else False,
+        "hook_returning": player.hook.returning if player.alive else False,
+        "hook_x": int(player.hook.rect.centerx) if (player.hook.active or player.hook.returning) and player.alive else None,
+        "hook_y": int(player.hook.rect.centery) if (player.hook.active or player.hook.returning) and player.alive else None,
+        "hook_hit_player": player.hook.hit_player_id
     }
+
+def get_spawn_position(player_id):
+    """Возвращает позицию спавна и команду на основе ID игрока"""
+    spawns = {
+        1: {"pos": (340, 200), "team": 1},
+        2: {"pos": (1620, 200), "team": 2}, 
+        3: {"pos": (340, 500), "team": 1},
+        4: {"pos": (1620, 500), "team": 2}, 
+        5: {"pos": (340, 800), "team": 1}, 
+        6: {"pos": (1620, 800), "team": 2}
+    }
+    
+    # Если ID больше 6, используем циклическое распределение
+    actual_id = ((player_id - 1) % 6) + 1
+    return spawns[actual_id]
+
+def reset_game():
+    """Инициализация игровых объектов"""
+    global center_rect
+    center_rect = pygame.Rect(WIDTH // 2 - 50, 0, 100, HEIGHT)
+    return center_rect
 
 def main():
     pygame.init()
-
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('dota 3')
-
+    pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN, pygame.KEYUP])  # Разрешаем только нужные события
+    
     clock = pygame.time.Clock()
-
+    players = pygame.sprite.Group()
+    local_player = None
+    other_players = {}
+    
+    # Инициализация игровых объектов
+    center_rect = reset_game()
+    
     # Подключение к серверу
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.connect(("192.168.1.135", 5555))
+        sock.connect(("26.140.237.173", 5555))
         sock.settimeout(0.1)
+        
+        # Получаем свой ID от сервера
+        data = sock.recv(4096)
+        init_data = pickle.loads(data)
+        if "your_id" in init_data:
+            player_id = init_data["your_id"]
+            print(f"[INIT] Получен ID от сервера: {player_id}")
+            
+            # Создаем локального игрока
+            spawn_data = get_spawn_position(player_id)
+            local_player = Player(spawn_data["pos"][0], spawn_data["pos"][1], players, spawn_data["team"])
+            local_player.set_id(player_id)
+            players.add(local_player)
+            print(f"[INIT] Создан локальный игрок с ID={local_player.id_p}")
+        else:
+            print("[ERROR] Не получен ID от сервера")
+            return
+
+        print(f"[DEBUG] ID локального игрока после создания: {local_player.id_p}")
         print("Успешно подключились к серверу")
     except ConnectionRefusedError:
         print("Не удалось подключиться к серверу")
         return
 
-    players = pygame.sprite.Group()
-    local_player = Player(340, 200, players, team=1)
-    local_player.id_p = 1  # Установим уникальный ID для локального игрока
-    players.add(local_player)  # Явно добавляем его в группу
-    
-    def reset_game():
-        nonlocal team_kills, players
-        team_kills = {1: 0, 2: 0}
-        players.empty()
-        # Recreate all players with unique IDs
-        player_1 = Player(340, 200, players, 1)
-        player_1.id_p = 1  # Это будет наш local_player
-        player_2 = Player(340, 500, players, 1)
-        player_2.id_p = 2
-        player_3 = Player(340, 800, players, 1)
-        player_3.id_p = 3
-        player_4 = Player(1620, 200, players, 2)
-        player_4.id_p = 4
-        player_5 = Player(1620, 500, players, 2)
-        player_5.id_p = 5
-        player_6 = Player(1620, 800, players, 2)
-        player_6.id_p = 6
-        return player_1  # Return a reference to local player
-    
-    local_player = reset_game()  # Теперь local_player будет иметь правильный ID и позицию
-    
     team_kills = {
         1: 0, 
         2: 0
@@ -82,162 +112,224 @@ def main():
     winning_team = None
     win_display_timer = 0
 
-    while True:
-        clock.tick(FPS) # fps change
-        
-        screen.blit(bg_surf, (0,0))     
-        screen.blit(center_surf, center_rect) 
+    try:
+        while True:
+            clock.tick(FPS)
+            
+            # Отрисовка
+            screen.blit(bg_surf, (0,0))     
+            screen.blit(center_surf, center_rect) 
+            
+            # Отрисовка всех игроков
+            for player in players:
+                if player.alive:  # Отрисовываем только живых игроков
+                    screen.blit(player.image, player.rect)
+                if player.hook.active or player.hook.returning:
+                    player.hook.draw_chain(screen)
+                    screen.blit(player.hook.image, player.hook.rect)
+            
+            # Отрисовка радиуса крюка
+            if show_hook_radius and local_player.alive:
+                pygame.draw.circle(screen, (0,255,0), local_player.rect.center, HOOK_RADIUS, 1)
+            
+            if local_player.alive:
+                pygame.draw.rect(screen, (255, 0, 0), local_player.rect, 2)  # Красный прямоугольник вокруг игрока
+            
+            pygame.display.update()
 
-        # Обновление игрока
-        local_player.move(left, right, up, down, center_rect, players)
-        local_player.hook.move(players, team_kills)
-        
-        # Отрисовка
-        screen.blit(bg_surf, (0,0))     
-        screen.blit(center_surf, center_rect) 
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    # Отправляем сигнал отключения
+                    disconnect_data = {"disconnect": True, "id": local_player.id_p}
+                    try:
+                        sock.sendall(pickle.dumps(disconnect_data))
+                    except:
+                        pass
+                    finally:
+                        # Очищаем ресурсы
+                        for player in players:
+                            player.kill()
+                        players.empty()
+                        other_players.clear()
+                        sock.close()
+                        pygame.quit()
+                        print("Игра завершена")
+                        sys.exit()
+                        
+                if event.type == pygame.WINDOWFOCUSLOST:
+                    continue
+                
+                if event.type == pygame.KEYDOWN: # Движение
+                    if event.key == ord('w'):
+                        up = True
+                    if event.key == ord('a'):
+                        left = True
+                    if event.key == ord('s'):
+                        down = True
+                    if event.key == ord('d'):
+                        right = True
+                    if event.key == ord('q'):
+                        if local_player and not local_player.hook.active and not local_player.hook.returning:
+                            local_player.hook.launch(pygame.mouse.get_pos())
+                    if event.key == pygame.K_LALT:
+                        show_hook_radius = True
 
-        # Отладочная информация
-        print(f"Количество игроков в группе: {len(players)}")
-        print(f"Позиция local_player: {local_player.rect.center}")
-        
-        # Отрисовка всех игроков
-        for player in players:
-            print(f"Отрисовка игрока: {player.id_p} на позиции {player.rect.center}")
-            if player.alive:
-                screen.blit(player.image, player.rect)
-            if player.hook.active or player.hook.returning:
-                player.hook.draw_chain(screen)
-                screen.blit(player.hook.image, player.hook.rect)
-        
-        # Отрисовка радиуса крюка
-        if show_hook_radius:
-            pygame.draw.circle(screen, (0,255,0), local_player.rect.center, HOOK_RADIUS, 1)
-        
-        pygame.draw.rect(screen, (255, 0, 0), local_player.rect, 2)  # Красный прямоугольник вокруг игрока
-        
-        pygame.display.flip()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                # client.sock.close()
-                exit()
-
-            if event.type >= pygame.USEREVENT:
-                # Check if the event is a respawn event for a specific player
-                for player in players:
-                    event_type = pygame.USEREVENT + (player.id_p % 1000)
-                    if event.type == event_type:
-                        player.respawn()
-                        pygame.time.set_timer(event_type, 0)  # Disable the timer after triggering
-
-            if event.type == pygame.KEYDOWN: # Движение
-                if event.key == ord('w'):
-                    up = True
-                if event.key == ord('a'):
-                    left = True
-                if event.key == ord('s'):
-                    down = True
-                if event.key == ord('d'):
-                    right = True
-                if event.key == ord('q'):
-                    if local_player.hook.active or local_player.hook.returning:
-                        continue
-                    local_player.hook.launch(pygame.mouse.get_pos())
-                if event.key == pygame.K_LALT:
-                    show_hook_radius = True
-
-            if event.type == pygame.KEYUP: # Остановка движения
-                if event.key == ord('w'):
-                    up = False
-                if event.key == ord('a'):
-                    left = False
-                if event.key == ord('s'):
-                    down = False
-                if event.key == ord('d'):
-                    right = False     
-                if event.key == pygame.K_LALT:
-                    show_hook_radius = False
-        
-        for team, kills in team_kills.items():
-            if kills >= WIN_CONDITION:
-                game_over = True
-                winning_team = team
-                win_display_timer = pygame.time.get_ticks()
-                break
-
-        if game_over:
-            # Display the winning message
-            font = pygame.font.Font(None, 100)
-            message = f"Team {winning_team} Wins!"
-            text = font.render(message, True, (255, 255, 255))
-            text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
-            screen.blit(bg_surf, (0, 0))  # Redraw background
-            screen.blit(text, text_rect)
+                if event.type == pygame.KEYUP: # Остановка движения
+                    if event.key == ord('w'):
+                        up = False
+                    if event.key == ord('a'):
+                        left = False
+                    if event.key == ord('s'):
+                        down = False
+                    if event.key == ord('d'):
+                        right = False     
+                    if event.key == pygame.K_LALT:
+                        show_hook_radius = False
+            
+            # Обновление всех игроков
+            if local_player:
+                local_player.update()
+                # Сразу после update отправляем обновленное состояние на сервер
+                player_data = serialize_player_data(local_player)
+                sock.sendall(pickle.dumps(player_data))
+                
+                if local_player.alive:
+                    local_player.move(left, right, up, down, center_rect, players)
+                local_player.hook.update()
+                
+            # Обновляем других игроков
+            for player in other_players.values():
+                player.update()  # Вызываем update для обработки респавна
+                if player.hook.active or player.hook.returning:
+                    player.hook.update()
 
             pygame.display.update()
 
-            # Restart the game after a delay
-            if pygame.time.get_ticks() - win_display_timer > 3000:  # 3 seconds
-                game_over = False
-                player_1 = reset_game()
-            continue
+            for team, kills in team_kills.items():
+                if kills >= WIN_CONDITION:
+                    game_over = True
+                    winning_team = team
+                    win_display_timer = pygame.time.get_ticks()
+                    break
 
-        # Отправка данных на сервер
+            if game_over:
+                # Display the winning message
+                font = pygame.font.Font(None, 100)
+                message = f"Team {winning_team} Wins!"
+                text = font.render(message, True, (255, 255, 255))
+                text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+                screen.blit(bg_surf, (0, 0))  # Redraw background
+                screen.blit(text, text_rect)
+
+                # Restart the game after a delay
+                if pygame.time.get_ticks() - win_display_timer > 3000:  # 3 seconds
+                    game_over = False
+                    local_player = reset_game()
+                continue
+            
+            pygame.display.update()
+
+            # Отправка и получение данных
+            try:
+                # Отправляем только свои данные
+                player_data = serialize_player_data(local_player)
+                sock.sendall(pickle.dumps(player_data))
+                
+                try:
+                    data = sock.recv(4096)
+                    if data:
+                        game_state = pickle.loads(data)
+                        if isinstance(game_state, dict) and "players" in game_state:
+                            # Получаем список активных ID
+                            active_ids = {p_data["id"] for p_data in game_state["players"]}
+                            
+                            # Удаляем отключившихся игроков
+                            disconnected_ids = set(other_players.keys()) - active_ids
+                            for player_id in disconnected_ids:
+                                if player_id in other_players:
+                                    other_players[player_id].hook.kill()  # Удаляем хук
+                                    other_players[player_id].kill()       # Удаляем игрока
+                                    del other_players[player_id]
+                                    print(f"[DISCONNECT] Игрок {player_id} отключился")
+
+                            
+                            # Обновляем других игроков
+                            for p_data in game_state["players"]:
+                                # Проверяем попадание в локального игрока
+                                print(f"[DEBUG] Проверка попадания: hook_hit_player={p_data['hook_hit_player']}, local_id={local_player.id_p}, alive={local_player.alive}, invulnerable={local_player.invulnerable}")
+                                if (p_data["hook_hit_player"] is not None and 
+                                    p_data["hook_hit_player"] == local_player.id_p and 
+                                    local_player.alive and 
+                                    not local_player.invulnerable):
+                                    print(f"[KILL EVENT] Локальный игрок {local_player.id_p} получает урон от игрока {p_data['id']}")
+                                    local_player.kill()
+                                    # Отправляем обновленное состояние на сервер немедленно
+                                    update_data = serialize_player_data(local_player)
+                                    sock.sendall(pickle.dumps(update_data))
+                                
+                                if p_data["id"] != local_player.id_p:
+                                    if p_data["id"] not in other_players:
+                                        spawn_data = get_spawn_position(p_data["id"])
+                                        new_player = Player(p_data["x"], p_data["y"], players, spawn_data["team"])
+                                        new_player.set_id(p_data["id"])
+                                        other_players[p_data["id"]] = new_player
+                                        players.add(new_player)
+                                        print(f"[CONNECT] Новый игрок {p_data['id']}")
+                                    else:
+                                        player = other_players[p_data["id"]]
+                                        
+                                        # Синхронизируем состояние alive
+                                        player.alive = p_data["alive"]
+                                        print(f"[DEBUG] Синхронизация alive для игрока {player.id_p}: {player.alive}")
+                                        print(f"[DEBUG] Данные игрока {p_data['id']}: hook_hit={p_data['hook_hit_player']}, alive={p_data['alive']}")
+                                        
+                                        # Проверяем попадание в других игроков
+                                        if (p_data["hook_hit_player"] is not None and 
+                                            p_data["hook_hit_player"] == player.id_p and 
+                                            player.alive and 
+                                            not player.invulnerable):
+                                            print(f"[KILL EVENT] Игрок {player.id_p} получает урон от игрока {p_data['id']}")
+                                            player.kill()
+                                            player.hook.hit_player_id = None  # Очищаем hit_player_id
+                                        
+                                        if not player.alive:
+                                            # Если игрок мертв, убираем его хук
+                                            player.hook.active = False
+                                            player.hook.returning = False
+                                            player.hook.rect.center = player.rect.center
+                                        else:
+                                            # Обновляем позицию только живых игроков
+                                            player.rect.center = (p_data["x"], p_data["y"])
+                                            player.hitbox.center = player.rect.center
+                                            
+                                            # Обновляем хук только для живых игроков
+                                            player.hook.active = p_data["hook_active"]
+                                            player.hook.returning = p_data["hook_returning"]
+                                            if player.hook.active or player.hook.returning:
+                                                player.hook.rect.center = (p_data["hook_x"], p_data["hook_y"])
+                except socket.timeout:
+                    pass
+
+            except Exception as e:
+                print(f"Ошибка отправки данных: {e}")
+
+    except Exception as e:
+        print(f"[ERROR] Ошибка в главном цикле: {e}")
+    finally:
+        # Гарантируем очистку даже при ошибках
         try:
-            player_data = serialize_player_data(local_player)
-            sock.sendall(pickle.dumps(player_data))
-            
-            # Получение данных от сервера
-            data = sock.recv(4096)
-            game_state = pickle.loads(data)
-            
-            # Обновление состояния игроков
-            if "players" in game_state:
-                current_players = {id(p): p for p in players}
-                players.empty()
-                
-                for p_data in game_state["players"]:
-                    if p_data["id"] != id(local_player):
-                        # Создаем нового игрока или используем существующего
-                        if p_data["id"] in current_players:
-                            player = current_players[p_data["id"]]
-                            player.hitbox.x = p_data["x"]
-                            player.hitbox.y = p_data["y"]
-                        else:
-                            player = Player(p_data["x"], p_data["y"], players, p_data["team"])
-                        
-                        player.alive = p_data["alive"]
-                        player.hook.active = p_data["hook_active"]
-                        player.hook.returning = p_data["hook_returning"]
-                        
-                        # Обновляем позицию крюка
-                        if p_data["hook_x"] is not None and p_data["hook_y"] is not None:
-                            player.hook.rect.x = p_data["hook_x"]
-                            player.hook.rect.y = p_data["hook_y"]
-                        
-                        players.add(player)
-                
-                players.add(local_player)
-                
-        except (socket.timeout, EOFError, pickle.UnpicklingError) as e:
-            print(f"Ошибка сети: {e}")
+            if local_player and local_player.id_p:
+                disconnect_data = {"disconnect": True, "id": local_player.id_p}
+                sock.sendall(pickle.dumps(disconnect_data))
+        except:
             pass
-
-        # Отрисовка
-        screen.blit(bg_surf, (0,0))     
-        screen.blit(center_surf, center_rect) 
-
-        for player in players:
-            if player.alive:
-                screen.blit(player.image, player.rect)
-            if player.hook.active or player.hook.returning:
-                player.hook.draw_chain(screen)
-                screen.blit(player.hook.image, player.hook.rect)
-        
-        pygame.draw.rect(screen, (255, 0, 0), local_player.rect, 2)  # Красный прямоугольник вокруг игрока
-        
-        pygame.display.flip()
-
+        finally:
+            for player in players:
+                player.kill()
+            players.empty()
+            other_players.clear()
+            sock.close()
+            pygame.quit()
+    
 if __name__ == '__main__':
     main()
-

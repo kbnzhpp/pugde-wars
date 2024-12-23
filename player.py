@@ -2,236 +2,221 @@ import pygame
 from config import *
 from time import *
 
-RESPAWN_EVENT = pygame.USEREVENT + 1
-
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, group, team):
-        super().__init__()
-        self.id_p = 0
-        self.alive = True
-        self.speedx = 0  # скорость перемещения. 0 - стоять на месте
-        self.speedy = 0
-        self.spawn_x = x
-        self.spawn_y = y
-        
-        # Добавим проверку загрузки изображений
-        try:
-            self.image_left = pygame.image.load("data/images/pudge_left.png").convert_alpha()
-            self.image_right = pygame.image.load("data/images/pudge_right.png").convert_alpha()
-        except pygame.error as e:
-            # Создаем временное изображение если файлы не найдены
-            self.image_left = pygame.Surface((100, 80))
-            self.image_left.fill((255, 0, 0))  # Красный прямоугольник
-            self.image_right = self.image_left.copy()
-            
-        self.image = self.image_left
-        self.rect = self.image.get_rect(center = (x, y))
-        self.hitbox = pygame.Rect(x + 50, y + 40, 100, 80)
-        self.hitbox.center = (x, y)
-        self.hook = Hook(self)
+        super().__init__(group)
+        self.image = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.hitbox = self.rect.inflate(-50, -40)
+        self._id = None  # Приватное поле для ID
         self.team = team
-        self.group = group
-        self.add(group)
-        
+        self.alive = True
+        self.hook = Hook(self)
+        self.speed = MOVE_SPEED
+        self.spawn_x = x  # Сохраняем начальную позицию
+        self.spawn_y = y
+        self.respawn_timer = 0
+        self.just_respawned = False  # Флаг для защиты только что возродившегося игрока
+        self.group = group  # Сохраняем ссылку на группу
+        self.invulnerable = False
+        self.invulnerable_timer = 0
+        self.last_hit_by = None  # Добавляем отслеживание последнего урона
+
+    @property
+    def id_p(self):
+        return self._id
+
+    @id_p.setter
+    def id_p(self, value):
+        self._id = value   
+
+    def set_id(self, player_id):
+        """Устанавливает ID игрока"""
+        self._id = player_id
+
+    def check_collisions(self, center_rect, players, axis='x'):
+        """Проверяет коллизии с центральной областью и другими игроками"""
+        if self.hitbox.colliderect(center_rect):
+            return True
+            
+        for player in players:
+            if player != self and player.alive and self.hitbox.colliderect(player.hitbox):
+                return True
+                
+        return False
+
     def move(self, left, right, up, down, center_rect, players):
-        if left:
-            self.speedx = -MOVE_SPEED
-            self.image = self.image_left
-        if right:
-            self.speedx = MOVE_SPEED
-            self.image = self.image_right
-        if up:
-            self.speedy = -MOVE_SPEED
-        if down:
-            self.speedy = MOVE_SPEED
-
-        if not(left or right) or (left and right):
-            self.speedx = 0
-        if not(up or down) or (up and down):
-            self.speedy = 0
-
         if self.hook.active:
-            self.speedx = 0
-            self.speedy = 0
-
-        self.hitbox.x += self.speedx
-        self.hitbox.y += self.speedy
+            return
+            
+        # Сохраняем предыдущие координаты
+        prev_x = self.rect.x
+        prev_y = self.rect.y
+        prev_hitbox_x = self.hitbox.x
+        prev_hitbox_y = self.hitbox.y
         
-        # Обновляем позицию rect после изменения hitbox
-        self.rect.center = self.hitbox.center
-
-        self.collide(center_rect, players)
-
-    def collide(self, center_rect, players):
-        if self.hitbox.x > (WIDTH - self.hitbox.width) or self.hitbox.x <= 0:
-            self.hitbox.x -= self.speedx
-
-        if self.hitbox.y >= (HEIGHT - self.hitbox.height) or self.hitbox.y <= 0:
-            self.hitbox.y -= self.speedy
-
-        if pygame.Rect.colliderect(self.hitbox, center_rect):
-            self.hitbox.x -= self.speedx
-
-        for collision in players:
-            if collision != self and self.hitbox.colliderect(collision.hitbox):
-                # Рассчитываем глубину столкновения
-                dx_left = collision.hitbox.right - self.hitbox.left  # Слева
-                dx_right = self.hitbox.right - collision.hitbox.left  # Справа
-                dy_top = collision.hitbox.bottom - self.hitbox.top  # Сверху
-                dy_bottom = self.hitbox.bottom - collision.hitbox.top  # Снизу
-
-                # Определяем минимальное столкновение
-                overlap_x = min(dx_left, dx_right)
-                overlap_y = min(dy_top, dy_bottom)
-
-                # Смещение по направлению меньшего столкновения
-                if overlap_x < overlap_y:
-                    # Горизонтальное столкновение
-                    if dx_left < dx_right:  # Удар справа
-                        self.hitbox.left = collision.hitbox.right
-                    else:  # У��ар слева
-                        self.hitbox.right = collision.hitbox.left
-                    self.speedx = 0
-                else:
-                    # Вертикальное столкновение
-                    if dy_top < dy_bottom:  # Удар снизу
-                        self.hitbox.top = collision.hitbox.bottom
-                    else:  # Удар сверху
-                        self.hitbox.bottom = collision.hitbox.top
-                    self.speedy = 0
+        # Обновляем координаты по X
+        if left:
+            self.rect.x -= self.speed
+            self.hitbox.x = self.rect.x + 25
+        if right:
+            self.rect.x += self.speed
+            self.hitbox.x = self.rect.x + 25
+            
+        # Проверяем коллизии по X
+        if self.check_collisions(center_rect, players, 'x'):
+            self.rect.x = prev_x
+            self.hitbox.x = prev_hitbox_x
+                
+        # Обновляем координаты по Y
+        if up:
+            self.rect.y -= self.speed
+            self.hitbox.y = self.rect.y + 20
+        if down:
+            self.rect.y += self.speed
+            self.hitbox.y = self.rect.y + 20
+            
+        # Проверяем коллизии по Y
+        if self.check_collisions(center_rect, players, 'y'):
+            self.rect.y = prev_y
+            self.hitbox.y = prev_hitbox_y
+        
+        # Ограничиваем движение в пределах экрана
+        self.rect.x = max(0, min(self.rect.x, WIDTH - self.rect.width))
+        self.rect.y = max(0, min(self.rect.y, HEIGHT - self.rect.height))
+        
+        # Обновляем хитбокс в соответствии с rect
+        self.hitbox.x = self.rect.x + 25
+        self.hitbox.y = self.rect.y + 20
 
     def kill(self):
+        """Убивает игрока и запускает таймер респавна"""
+        if self.just_respawned:
+            return
+        print(f"[KILL] Игрок {self.id_p} убит игроком {self.last_hit_by}")
         self.alive = False
+        if self.respawn_timer == 0:
+            self.respawn_timer = pygame.time.get_ticks()
+            print(f"[DEBUG] Установлен respawn_timer: {self.respawn_timer}")
+        self.hook.active = False
+        self.hook.returning = False
+        self.hook.rect.center = self.rect.center
+
+    def update(self):
+        """Обновляет состояние игрока"""
+        current_time = pygame.time.get_ticks()
         
+        # Проверка неуязвимости
+        if self.invulnerable:
+            if current_time - self.invulnerable_timer > 1000:  # 1 секунда неуязвимости
+                self.invulnerable = False
+                print(f"[DEBUG] Игрок {self.id_p} снова уязвим")
+
+        if not self.alive and self.respawn_timer > 0:
+            time_passed = current_time - self.respawn_timer
+            
+            if time_passed >= len(self.group) * 1000:  # 1.5 секунды
+                self.hook.hit_player_id
+                self.alive = True
+                self.respawn_timer = 0
+                self.rect.center = (self.spawn_x, self.spawn_y)
+                self.hitbox.center = (self.spawn_x, self.spawn_y)
+                # Добавляем неуязвимость при респавне
+                self.invulnerable = True
+                self.invulnerable_timer = current_time
+
     def respawn(self):
-        # Add player back to the group and reset position
+        """Возрождает игрока в точке спавна"""
+        print(f"[RESPAWN] Игрок {self.id_p} возрождается")
         self.rect.center = (self.spawn_x, self.spawn_y)
         self.hitbox.center = (self.spawn_x, self.spawn_y)
-        self.add(self.group)
-        self.alive = True
+        self.alive = True  # Это изменение должно отправиться на сервер
 
 class Hook(pygame.sprite.Sprite):
     def __init__(self, player):
         super().__init__()
-        self.player =  player
-        self.x = player.rect.x
-        self.y = player.rect.y
+        self.player = player
         self.image = pygame.image.load('data/images/hook_right.png')
-        self.rect = self.image.get_rect(center = (self.x, self.y))
+        self.rect = self.image.get_rect()
+        self.rect.center = player.rect.center
         self.target_position = None
         self.active = False
         self.returning = False
         self.pos_x = self.rect.centerx
         self.pos_y = self.rect.centery
-
+        self.hit_player_id = None  # ID игрока, в которого попали
+        
     def launch(self, target_pos):
         if not self.active and not self.returning:
             self.active = True
             self.target_position = target_pos
-            
-            hook_start = self.player.rect.center
-            self.start_position = hook_start
-            self.pos_x, self.pos_y = hook_start
-            self.rect.center = hook_start
-        
-    def move(self, players, team_kills):
+            self.start_position = self.player.rect.center
+            self.pos_x, self.pos_y = self.start_position
+            self.rect.center = self.start_position
+    
+    def update(self):
         if self.active and self.target_position:
-            # Calculate the direction vector
-            target_x, target_y = self.target_position
-            dx = target_x - self.pos_x
-            dy = target_y - self.pos_y
+            # Вычисляем вектор направления
+            dx = self.target_position[0] - self.pos_x
+            dy = self.target_position[1] - self.pos_y
             
-
-            # Changing direction of hook image
+            # Поворачиваем изображение хука
             if dx < 0:
                 self.image = pygame.image.load('data/images/hook_left.png')
             else:
                 self.image = pygame.image.load('data/images/hook_right.png')
 
-            # Normalize the direction vector
-            traveled_distance = ((self.pos_x - self.start_position[0])**2 + 
-                                 (self.pos_y - self.start_position[1])**2)**0.5
-            
+            # Нормализуем вектор
             distance = (dx**2 + dy**2)**0.5
-            if distance == 0:
-                self.rect.center = self.player.rect.center
-                self.active = False
-                self.returning = False
-                return
+            traveled_distance = ((self.pos_x - self.start_position[0])**2 + 
+                               (self.pos_y - self.start_position[1])**2)**0.5
             
-            if (abs(dx) <= HOOK_SPEED and abs(dy) <= HOOK_SPEED) or traveled_distance >= HOOK_RADIUS or self.collide(players, team_kills):
-                self.rect.center = self.player.rect.center   # Snap to the exact position
+            # Проверяем условия возврата
+            if distance < HOOK_SPEED or traveled_distance >= HOOK_RADIUS:
                 self.returning = True
                 self.active = False
                 return
             
+            # Двигаем хук
             direction_x = dx / distance
             direction_y = dy / distance
-            
-            # Move the hook incrementally along the direction vector
             self.pos_x += direction_x * HOOK_SPEED
             self.pos_y += direction_y * HOOK_SPEED
-            
             self.rect.center = (int(self.pos_x), int(self.pos_y))
             
-        elif self.returning:
-            self.move_backwards()
-        self.collide(players, team_kills)
-
-    def move_backwards(self):
-        # Calculate direction back to player
-        dx = self.player.rect.centerx - self.pos_x
-        dy = self.player.rect.centery - self.pos_y
-        
-        # Normalize direction vector
-        distance = (dx ** 2 + dy ** 2) ** 0.5
-        if distance < 10:
-            self.rect.center = self.player.rect.center
-            self.active = False
-            self.returning = False
-            return
+            # Проверяем попадание в других игроков
+            for player in self.player.group:
+                if player != self.player and player.alive and player.team != self.player.team:
+                    if self.rect.colliderect(player.rect):
+                        self.hit_player_id = player.id_p  # Только сохраняем ID
+                        self.returning = True
+                        self.active = False
+                        return
             
-        if abs(dx) <= HOOK_SPEED and abs(dy) <= HOOK_SPEED:
-            self.rect.center = self.player.rect.center  # Snap back to player
-            self.returning = False
-            self.active = False
-            return
-
-        direction_x = dx / distance
-        direction_y = dy / distance
-
-        # Move the hook incrementally
-        self.pos_x += direction_x * (HOOK_SPEED * 3)
-        self.pos_y += direction_y * (HOOK_SPEED * 3)
-        
-        self.rect.center = (int(self.pos_x), int(self.pos_y))
-
+        elif self.returning:
+            # Возвращаем хук к игроку
+            dx = self.player.rect.centerx - self.pos_x
+            dy = self.player.rect.centery - self.pos_y
+            
+            distance = (dx**2 + dy**2)**0.5
+            if distance < 30:  # Если хук достаточно близко к игроку
+                self.rect.center = self.player.rect.center
+                self.returning = False
+                return
+                
+            # Двигаем хук обратно
+            direction_x = dx / distance
+            direction_y = dy / distance
+            self.pos_x += direction_x * (HOOK_SPEED * 3)
+            self.pos_y += direction_y * (HOOK_SPEED * 3)
+            self.rect.center = (int(self.pos_x), int(self.pos_y))
+    
     def draw_chain(self, screen):
         if self.active or self.returning:
             pygame.draw.line(
-                screen, 
-                (200, 200, 200),  # Color: grey
-                self.player.rect.center,  # Starting position (player's center)
-                self.rect.center,  # Hook's position
-                10  # Line thickness
+                screen,
+                (200, 200, 200),  # Серый цвет
+                self.player.rect.center,
+                self.rect.center,
+                8  # Толщина линии
             )
-    
-    def collide(self, players, team_kills):
-        for player in players:
-            if self.rect.colliderect(player.hitbox) and self.player != player and self.player.team != player.team and player.alive:
-                player.id_p = id(player)
-                player.kill()
-    
-                # Ensure team_kills has the current team key
-                if self.player.team not in team_kills:
-                    team_kills[self.player.team] = 0
-    
-                team_kills[self.player.team] += 1
-                self.active = False  # Stop hook movement
-                self.returning = True
-    
-                event_type = pygame.USEREVENT + (player.id_p % 1000)
-                pygame.time.set_timer(event_type, 2500)
-    
-                return True
-        return False
