@@ -53,11 +53,13 @@ def main():
         font = pygame.font.Font(None, 50)
         team1_text = font.render(f"БАРЕБУХИ: {team_kills[1]}", True, (0, 250, 154))
         team2_text = font.render(f"АБАЛДУИ: {team_kills[2]}", True, (255, 228, 181))
+        fps = font.render(f"FPS: {clock.get_fps():.2f}", True, (255, 255, 255))
         scoreboard = pygame.Surface((WIDTH, 50))
         scoreboard.fill((50, 50, 50))
         screen.blit(scoreboard, (0, 0))
         screen.blit(team1_text, (10, 10))
         screen.blit(team2_text, (WIDTH - 250, 10))
+        screen.blit(fps, (WIDTH - 500, 10))
 
     def connect_to_server(players):
         """Подключение к серверу и создание игрока"""
@@ -290,7 +292,6 @@ def main():
                                     # Обновляем других игроков
                                     for p_data in game_state["players"]:
                                         # Проверяем попадание в локального игрока
-                                        
                                         if (p_data["hook_hit_player"] is not None and 
                                             p_data["hook_hit_player"] == local_player.id_p and 
                                             local_player.alive):

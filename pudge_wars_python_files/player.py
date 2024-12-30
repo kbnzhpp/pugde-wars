@@ -135,7 +135,7 @@ class Hook(pygame.sprite.Sprite):
         self.hit_player_id = None  # ID игрока, в которого попали
         
     def launch(self, target_pos):
-        if not self.active and not self.returning:
+        if not self.active and not self.returning and self.player.alive:
             self.active = True
             self.target_position = target_pos
             self.start_position = self.player.rect.center
@@ -143,7 +143,7 @@ class Hook(pygame.sprite.Sprite):
             self.rect.center = self.start_position
     
     def update(self):
-        if self.active and self.target_position:
+        if self.active and self.target_position and self.player.alive:
             # Вычисляем вектор направления
             dx = self.target_position[0] - self.pos_x
             dy = self.target_position[1] - self.pos_y

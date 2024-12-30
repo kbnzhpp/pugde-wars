@@ -3,7 +3,7 @@ import pickle
 from threading import Thread, Lock
 import time
 
-HOST = "0.0.0.0"  # Измените на ваш IP при необходимости
+HOST = "26.140.237.173"  # Измените на ваш IP при необходимости
 PORT = 5555
 
 class GameServer:
