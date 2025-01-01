@@ -1,7 +1,6 @@
 import socket
 import pickle
 from threading import Thread, Lock
-import time
 
 HOST = "26.140.237.173"  # Измените на ваш IP при необходимости
 PORT = 5555
@@ -33,7 +32,7 @@ class GameServer:
             
             while True:
                 try:
-                    data = conn.recv(4096)
+                    data = conn.recv(8192)
                     if not data:
                         print(f"[DISCONNECT] Клиент {addr} отключился (нет данных)")
                         break

@@ -264,7 +264,7 @@ def main():
                 sock.sendall(pickle.dumps(player_data))
                 
                 try:
-                    data = sock.recv(4096)
+                    data = sock.recv(8192)
                     if data:
                         try:  # Добавляем обработку ошибки здесь
                             game_state = pickle.loads(data)
