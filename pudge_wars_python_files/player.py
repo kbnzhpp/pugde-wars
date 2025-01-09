@@ -19,6 +19,7 @@ class Player(pygame.sprite.Sprite):
         self.just_respawned = False  # Флаг для защиты только что возродившегося игрока
         self.group = group  # Сохраняем ссылку на группу
         self.last_hit_by = None  # Добавляем отслеживание последнего урона
+        self.direction = pygame.math.Vector2(0, 0)
 
     @property
     def id_p(self):
@@ -42,17 +43,21 @@ class Player(pygame.sprite.Sprite):
                 return True
         return False
 
-    def move(self, left, right, up, down, center_rect, players):
+    def move(self, left, right, up, down, center_rect, players, fps):
         if self.hook.active:
             return
             
         # Сохраняем предыдущие координаты
+        try:
+            self.speed = 400 / fps
+        except ZeroDivisionError:
+            self.speed = 0
+
         prev_x = self.rect.x
         prev_y = self.rect.y
         prev_hitbox_x = self.hitbox.x
         prev_hitbox_y = self.hitbox.y
-        
-        # Обновляем координаты по X
+
         if left:
             self.rect.x -= self.speed
             self.hitbox.x = self.rect.x + 25
@@ -74,7 +79,7 @@ class Player(pygame.sprite.Sprite):
         if down:
             self.rect.y += self.speed
             self.hitbox.y = self.rect.y + 20
-            
+
         # Проверяем коллизии по Y
         if self.check_collisions(center_rect, players, 'y'):
             self.rect.y = prev_y
@@ -82,11 +87,7 @@ class Player(pygame.sprite.Sprite):
         
         # Ограничиваем движение в пределах экрана
         self.rect.x = max(0, min(self.rect.x, WIDTH - self.rect.width))
-        self.rect.y = max(0, min(self.rect.y, HEIGHT - self.rect.height))
-        
-        # Обновляем хитбокс в соответствии с rect
-        self.hitbox.x = self.rect.x + 25
-        self.hitbox.y = self.rect.y + 20
+        self.rect.y = max(40, min(self.rect.y, HEIGHT - self.rect.height))
 
     def kill(self):
         """Убивает игрока и запускает таймер респавна"""

@@ -65,10 +65,10 @@ def main():
         """Подключение к серверу и создание игрока"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("26.140.237.173", 5555))
+            sock.connect(("localhost", 5555))
             sock.settimeout(1.0)  # Увеличиваем таймаут до 1 секунды
             
-            data = sock.recv(4096)
+            data = sock.recv(512)
             init_data = pickle.loads(data)
             if "your_id" in init_data:
                 player_id = init_data["your_id"]
@@ -92,9 +92,9 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('dota 3')
-    pygame.event.set_allowed([pygame.QUIT, pygame.KEYDOWN, pygame.KEYUP])  # Разрешаем только нужные события
     
     clock = pygame.time.Clock()
+    fps = 0
     players = pygame.sprite.Group()
     local_player = None
     other_players = {}
@@ -128,8 +128,7 @@ def main():
 
     try:
         while True:
-            clock.tick(FPS)
-            
+            clock.tick(60)
             # Отрисовка
             screen.blit(bg_surf, (0,0))     
             screen.blit(center_surf, center_rect) 
@@ -138,10 +137,12 @@ def main():
             for player in players:
                 if player.alive:  # Отрисовываем только живых игроков
                     screen.blit(player.image, player.rect)
+                    player.update()
                 if player.hook.active or player.hook.returning:
                     player.hook.draw_chain(screen)
                     screen.blit(player.hook.image, player.hook.rect)
-            
+                    player.hook.update()
+
             # Отрисовка радиуса крюка
             if show_hook_radius and local_player.alive:
                 pygame.draw.circle(screen, (0, 255, 0), local_player.rect.center, HOOK_RADIUS, 1)
@@ -149,7 +150,7 @@ def main():
             if local_player.alive:
                 pygame.draw.polygon(screen, (40, 255, 40), 
                     [[local_player.rect.x + 80, local_player.rect.y - 50], [local_player.rect.x + 100, local_player.rect.y - 50], 
-                     [local_player.rect.x + 90, local_player.rect.y - 20]])  # Зеленый треугольник над игроком
+                     [local_player.rect.x + 90, local_player.rect.y - 20]])
             
             draw_score()
 
@@ -189,6 +190,7 @@ def main():
                             local_player.hook.launch(pygame.mouse.get_pos())
                     if event.key == pygame.K_LALT:
                         show_hook_radius = True
+                        fps = 60
 
                 if event.type == pygame.KEYUP: # Остановка движения
                     if event.key == ord('w'):
@@ -201,19 +203,13 @@ def main():
                         right = False     
                     if event.key == pygame.K_LALT:
                         show_hook_radius = False
+                        fps = 0
             
-            # Обновление всех игроков
             if local_player:
                 local_player.update()
                 if local_player.alive:
-                    local_player.move(left, right, up, down, center_rect, players)
-                local_player.hook.update()
-                
-            # Обновляем других игроков
-            for player in other_players.values():
-                player.update()  # Вызываем update для обработки респавна
-                if player.hook.active or player.hook.returning:
-                    player.hook.update()
+                    local_player.move(left, right, up, down, center_rect, players, clock.get_fps())
+                local_player.hook.update()    
 
             for team, kills in team_kills.items():
                 if kills >= WIN_CONDITION:
@@ -225,7 +221,7 @@ def main():
                     }
                     sock.sendall(pickle.dumps(win_data))
                     print(f"[DEBUG] Отправляем сигнал о победе на сервер")
-                    
+                
 
             if game_over:
                 # Отображаем экран победы
@@ -254,7 +250,7 @@ def main():
                 import subprocess
                 subprocess.Popen(['client_restart.bat'], shell=True) # Запуск клиент
                 break
-
+            
             pygame.display.update()
 
             # Отправка и получение данных

@@ -2,7 +2,7 @@ import socket
 import pickle
 from threading import Thread, Lock
 
-HOST = "26.140.237.173"  # Измените на ваш IP при необходимости
+HOST = "localhost"  # Измените на ваш IP при необходимости
 PORT = 5555
 
 class GameServer:
@@ -100,15 +100,15 @@ class GameServer:
         with self.lock:
             if conn in self.clients:
                 player_id = self.clients[conn]
-                # Удаляем данные игрока
-                if player_id in self.players:
-                    del self.players[player_id]
-                # Удаляем связь сокет-ID
-                del self.clients[conn]
                 try:
+                    # Удаляем данные игрока
+                    if player_id in self.players:
+                        del self.players[player_id]
+                    # Удаляем связь сокет-ID
+                    del self.clients[conn]
                     conn.close()
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[ERROR] Ошибка при удалении клиента {player_id}: {e}")
                 print(f"[REMOVE] Удален клиент с ID {player_id}")
 
     def start(self):
@@ -117,15 +117,17 @@ class GameServer:
         self.server.bind(("0.0.0.0", 5555))
         self.server.listen(6)
         print("[START] Сервер запущен...")
-        
+
         while True:
             try:
-                conn, addr = self.server.accept()
-                print(f"[CONNECT] Новое подключение: {addr}")
-                Thread(target=self.handle_client, args=(conn, addr)).start()
+                if len(self.clients) < 6:
+                    conn, addr = self.server.accept()
+                    print(f"[CONNECT] Новое подключение: {addr}")
+                    Thread(target=self.handle_client, args=(conn, addr)).start()
+                    
             except Exception as e:
                 print(f"[ERROR] Ошибка при принятии подключения: {e}")
-                
+
     def restart(self):
         print("[RESTART] Сервер перезапущен...")
         
