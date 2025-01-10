@@ -2,7 +2,7 @@ import socket
 import pickle
 from threading import Thread, Lock
 
-HOST = "localhost"  # Измените на ваш IP при необходимости
+HOST = "0.0.0.0"  # Измените на ваш IP при необходимости
 PORT = 5555
 
 class GameServer:
@@ -114,7 +114,7 @@ class GameServer:
     def start(self):
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server.bind(("0.0.0.0", 5555))
+        self.server.bind((HOST, PORT))
         self.server.listen(6)
         print("[START] Сервер запущен...")
 

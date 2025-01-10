@@ -209,3 +209,14 @@ class Hook(pygame.sprite.Sprite):
                 self.rect.center,
                 8  # Толщина линии
             )
+
+def Button():
+    def __init__(self, x, y, width, height):
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+    def draw(self, surface):
+        pass
+    

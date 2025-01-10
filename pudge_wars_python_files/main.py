@@ -61,12 +61,12 @@ def main():
         screen.blit(team2_text, (WIDTH - 250, 10))
         screen.blit(fps, (WIDTH - 500, 10))
 
-    def connect_to_server(players):
+    def connect_to_server(players, ip_):
         """Подключение к серверу и создание игрока"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(("localhost", 5555))
-            sock.settimeout(1.0)  # Увеличиваем таймаут до 1 секунды
+            sock.connect((ip_, 5555))
+            sock.settimeout(0.3)  # Увеличиваем таймаут до 1 секунды
             
             data = sock.recv(512)
             init_data = pickle.loads(data)
@@ -97,24 +97,69 @@ def main():
     fps = 0
     players = pygame.sprite.Group()
     local_player = None
+    sock = None
     other_players = {}
     
-    # Инициализация игровых объектов
-    center_rect = reset_game()
     
-    sock, local_player = connect_to_server(players)
-    if not sock or not local_player:
-        return
+    start_screen = True
+    game = False
+    ip = ''
+    # Инициализация стартового экрана
+    while start_screen:
+        font_start = pygame.font.Font(None, 60)
+        start_text = font_start.render("ВВЕДИТЕ IP СЕРВЕРА:", True, (81, 255, 149))
+        ip_text = font_start.render(ip, True, (0, 0, 0))
+        stop = False
+        
+        bg_surf = pygame.image.load("data/images/start_bg.jpeg").convert()
+        bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
+        
+        screen.blit(bg_surf, (0, 0))
+        screen.blit(ip_text, ((WIDTH // 2) - 200, (HEIGHT // 2) - 300))
+        screen.blit(start_text, ((WIDTH // 2) - 300, (HEIGHT // 2) - 400))
+        
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_RETURN:
+                    stop = True
+                elif e.key == pygame.K_BACKSPACE:
+                    ip = ip[:-1]
+                elif e.unicode.isprintable():  # Добавляем только печатные символы
+                    ip += e.unicode
+
+        pygame.display.update()
+        
+        if ip != '' and stop:
+            try:    
+                sock, local_player = connect_to_server(players, ip)
+                if sock == local_player == None:
+                    raise Exception 
+            except Exception:
+                error_text = font_start.render("ВВЕДЕН НЕВЕРНЫЙ IP:", True, (255, 0, 0))
+                print(sock, local_player)
+                screen.blit(error_text, (0,0))
+                pygame.display.update()
+                ip = ''
+                pygame.time.wait(1000)
+            else:
+                start_screen = False
+                game = True
+        
+        clock.tick(60)
     
     bg_surf = pygame.image.load("data/images/background.jpg").convert()
     bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
+    center_rect = reset_game()
     screen.blit(bg_surf, (0,0)) 
 
     center_rect = pygame.Rect((714, 0, 400, HEIGHT))
     center_surf = pygame.Surface((400, HEIGHT))
     center_surf.set_alpha(0)
     screen.blit(center_surf, center_rect) 
-    
+
     left = right = up = down = show_hook_radius = False
 
     # Инициализация перед основным циклом
@@ -126,9 +171,10 @@ def main():
         game_over = False
     winning_team = None
 
+    # Инициализация самой игры(соновного цикла)
     try:
-        while True:
-            clock.tick(60)
+        while game:
+            
             # Отрисовка
             screen.blit(bg_surf, (0,0))     
             screen.blit(center_surf, center_rect) 
@@ -251,6 +297,7 @@ def main():
                 subprocess.Popen(['client_restart.bat'], shell=True) # Запуск клиент
                 break
             
+            clock.tick(60)
             pygame.display.update()
 
             # Отправка и получение данных
