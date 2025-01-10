@@ -32,7 +32,7 @@ class GameServer:
             
             while True:
                 try:
-                    data = conn.recv(8192)
+                    data = conn.recv(16384)
                     if not data:
                         print(f"[DISCONNECT] Клиент {addr} отключился (нет данных)")
                         break

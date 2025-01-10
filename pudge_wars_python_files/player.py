@@ -5,7 +5,7 @@ from time import *
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, group, team):
         super().__init__(group)
-        self.image = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+        self.image = pygame.image.load("data/images/pudge_right.png").convert_alpha()
         self.rect = self.image.get_rect(topleft=(x, y))
         self.hitbox = self.rect.inflate(-50, -40)
         self._id = None  # Приватное поле для ID
@@ -19,7 +19,7 @@ class Player(pygame.sprite.Sprite):
         self.just_respawned = False  # Флаг для защиты только что возродившегося игрока
         self.group = group  # Сохраняем ссылку на группу
         self.last_hit_by = None  # Добавляем отслеживание последнего урона
-        self.direction = pygame.math.Vector2(0, 0)
+        self.direction = 'left'
 
     @property
     def id_p(self):
@@ -61,11 +61,13 @@ class Player(pygame.sprite.Sprite):
         if left:
             self.rect.x -= self.speed
             self.hitbox.x = self.rect.x + 25
-            self.image = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+            #self.image = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+            self.direction = 'left'
         if right:
             self.rect.x += self.speed
             self.hitbox.x = self.rect.x + 25
-            self.image = pygame.image.load("data/images/pudge_right.png").convert_alpha()
+            #self.image = pygame.image.load("data/images/pudge_right.png").convert_alpha()
+            self.direction = 'right'
             
         # Проверяем коллизии по X
         if self.check_collisions(center_rect, players, 'x'):
@@ -80,6 +82,7 @@ class Player(pygame.sprite.Sprite):
             self.rect.y += self.speed
             self.hitbox.y = self.rect.y + 20
 
+        
         # Проверяем коллизии по Y
         if self.check_collisions(center_rect, players, 'y'):
             self.rect.y = prev_y
@@ -103,6 +106,7 @@ class Player(pygame.sprite.Sprite):
     def update(self):
         """Обновляет состояние игрока"""
         current_time = pygame.time.get_ticks()
+        self.image = pygame.image.load(f'data/images/pudge_{self.direction}.png')
 
         if not self.alive and self.respawn_timer > 0:
             time_passed = current_time - self.respawn_timer
@@ -114,18 +118,12 @@ class Player(pygame.sprite.Sprite):
                 self.rect.center = (self.spawn_x, self.spawn_y)
                 self.hitbox.center = (self.spawn_x, self.spawn_y)
 
-    def respawn(self):
-        """Возрождает игрока в точке спавна"""
-        print(f"[RESPAWN] Игрок {self.id_p} возрождается")
-        self.rect.center = (self.spawn_x, self.spawn_y)
-        self.hitbox.center = (self.spawn_x, self.spawn_y)
-        self.alive = True  # Это изменение должно отправиться на сервер
-
 class Hook(pygame.sprite.Sprite):
     def __init__(self, player):
         super().__init__()
         self.player = player
-        self.image = pygame.image.load('data/images/hook_right.png')
+        self.direction = 'right'
+        self.image = pygame.image.load(f'data/images/hook_{self.direction}.png').convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.center = player.rect.center
         self.target_position = None
@@ -133,28 +131,38 @@ class Hook(pygame.sprite.Sprite):
         self.returning = False
         self.pos_x = self.rect.centerx
         self.pos_y = self.rect.centery
-        self.hit_player_id = None  # ID игрока, в которого попали
+        self.hit_player_id = None  # ID игрока, в которого попали\
+        self.cooldown = 0
         
     def launch(self, target_pos):
-        if not self.active and not self.returning and self.player.alive:
+        if not self.active and not self.returning and self.player.alive and self.cooldown == 0:
             self.active = True
             self.target_position = target_pos
             self.start_position = self.player.rect.center
             self.pos_x, self.pos_y = self.start_position
             self.rect.center = self.start_position
+            self.cooldown = pygame.time.get_ticks()
     
     def update(self):
+        current_time = pygame.time.get_ticks()
+
+        timer = current_time - self.cooldown
+        if timer >= 5000:
+            self.cooldown = 0
+
         if self.active and self.target_position and self.player.alive:
             # Вычисляем вектор направления
+
             dx = self.target_position[0] - self.pos_x
             dy = self.target_position[1] - self.pos_y
             
             # Поворачиваем изображение хука
             if dx < 0:
-                self.image = pygame.image.load('data/images/hook_left.png')
+                self.direction = 'left'
             else:
-                self.image = pygame.image.load('data/images/hook_right.png')
+                self.direction = 'right'
 
+            self.image = pygame.image.load(f'data/images/hook_{self.direction}.png')
             # Нормализуем вектор
             distance = (dx**2 + dy**2)**0.5
             traveled_distance = ((self.pos_x - self.start_position[0])**2 + 
