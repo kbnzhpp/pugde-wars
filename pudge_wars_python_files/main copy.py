@@ -1,6 +1,6 @@
 import pygame
 from config import *
-from player import Player
+from classes import *
 import socket
 import pickle
 import sys
@@ -26,7 +26,9 @@ def serialize_player_data(player):
         "hook_y": int(player.hook.rect.centery) if (player.hook.active or player.hook.returning) and player.alive else None,
         "hook_hit_player": player.hook.hit_player_id if hasattr(player.hook, 'hit_player_id') else None,
         'hook_direction': player.hook.direction,
-        'player_direction': player.direction
+        'player_direction': player.direction,
+        'skin_player': player.skin,
+        'skin_hook': player.hook.skin
     }
     return data
 
@@ -55,6 +57,7 @@ def reset_game():
     return center_rect
 
 def main():
+    """Main function of game"""
     def draw_score():
         font = pygame.font.Font(None, 50)
         team1_text = font.render(f"БАРЕБУХИ: {team_kills[1]}", True, (0, 250, 154))
@@ -67,7 +70,7 @@ def main():
         screen.blit(team2_text, (WIDTH - 250, 10))
         screen.blit(fps, (WIDTH - 500, 10))
 
-    def connect_to_server(players, ip_):
+    def connect_to_server(players, ip_, skin_player, skin_hook):
         """Подключение к серверу и создание игрока"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -81,7 +84,8 @@ def main():
                 print(f"[INIT] Получен ID от сервера: {player_id}")
                 # Создаем локального игрока
                 spawn_data = get_spawn_position(player_id)
-                local_player = Player(spawn_data["pos"][0], spawn_data["pos"][1], players, spawn_data["team"])
+
+                local_player = Player(spawn_data["pos"][0], spawn_data["pos"][1], players, spawn_data["team"], skin_player, skin_hook)
                 local_player.set_id(player_id)
                 players.add(local_player)
                 print(f"[INIT] Создан локальный игрок с ID={local_player.id_p}")
@@ -94,7 +98,88 @@ def main():
         except ConnectionRefusedError:
             print("Не удалось подключиться к серверу")
             return None, None
+    
+    def startscreen():
+        """Start screen func"""
+        start_screen = True
+        game = False
+        ip = ''
+        skins_pudge = { 
+            'default' : pygame.image.load('data/images/pudge_default_right.png'),
+            'pig' : pygame.image.load('data/images/pudge_pig_right.png')
+        }   
+        skins_hook = {
+            'default' : pygame.image.load('data/images/hook_default_right.png'), 
+            'chesters' : pygame.image.load('data/images/hook_chesters_right.png')
+        }
+        skin_panel = SkinPanel(skins_pudge, skins_hook)
+        skin_pudge = skin_panel.selected_player_skin
+        skin_hook = skin_panel.selected_hook_skin
+        bg_surf = pygame.image.load("data/images/start_bg.jpeg").convert()
+        bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
+        font_start = pygame.font.Font(None, 60)
+        font_button_skin_panel = pygame.font.Font(None, 50)
+        stop = False
+        button_skins = Button(  
+            (WIDTH // 2) - 200,
+            (HEIGHT // 2) - 200,
+            200,
+            100,
+            (100, 100, 100),
+            (150, 150, 150), 
+            font_button_skin_panel, 
+            skin_panel.toggle_panel
+            )
+        # Инициализация стартового экрана
+        while start_screen:
+            start_text = font_start.render("ВВЕДИТЕ IP СЕРВЕРА:", True, (81, 255, 149))
+            ip_text = font_start.render(ip, True, (0, 0, 0))
+            
+
+            screen.blit(bg_surf, (0, 0))
+            screen.blit(ip_text, ((WIDTH // 2) - 200, (HEIGHT // 2) - 300))
+            screen.blit(start_text, ((WIDTH // 2) - 300, (HEIGHT // 2) - 400))
+            button_skins.draw(screen, 'Скины', (255, 255, 255))
+            skin_panel.draw_panel(screen)
         
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_RETURN:
+                        stop = True
+                    elif e.key == pygame.K_BACKSPACE:
+                        ip = ip[:-1]
+                    elif e.unicode.isprintable():  # Добавляем только печатные символы
+                        ip += e.unicode
+                if e.type == pygame.MOUSEBUTTONDOWN:
+                    if e.button == 1:                        
+                        button_skins.click(e)
+            
+            skin_pudge = skin_panel.selected_player_skin
+            skin_hook = skin_panel.selected_hook_skin
+            pygame.display.update()
+
+            if ip != '' and stop:
+                try:    
+                    sock, local_player = connect_to_server(players, ip, skin_pudge, skin_hook)
+                    if sock == local_player == None:
+                        raise Exception 
+                except Exception:
+                    error_text = font_start.render("ВВЕДЕН НЕВЕРНЫЙ IP:", True, (255, 0, 0))
+                    screen.blit(error_text, (0,0))
+                    pygame.display.update()
+                    ip = ''
+                    stop = False
+                    pygame.time.wait(1000)
+                else:
+                    start_screen = False
+                    game = True
+                    return game, sock, local_player
+        
+            clock.tick(60)
+
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption('dota 3')
@@ -105,57 +190,9 @@ def main():
     local_player = None
     sock = None
     other_players = {}
-    
-    
-    start_screen = True
     game = False
-    ip = ''
-    # Инициализация стартового экрана
-    while start_screen:
-        font_start = pygame.font.Font(None, 60)
-        start_text = font_start.render("ВВЕДИТЕ IP СЕРВЕРА:", True, (81, 255, 149))
-        ip_text = font_start.render(ip, True, (0, 0, 0))
-        stop = False
-        
-        bg_surf = pygame.image.load("data/images/start_bg.jpeg").convert()
-        bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
-        
-        screen.blit(bg_surf, (0, 0))
-        screen.blit(ip_text, ((WIDTH // 2) - 200, (HEIGHT // 2) - 300))
-        screen.blit(start_text, ((WIDTH // 2) - 300, (HEIGHT // 2) - 400))
-        
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            if e.type == pygame.KEYDOWN:
-                if e.key == pygame.K_RETURN:
-                    stop = True
-                elif e.key == pygame.K_BACKSPACE:
-                    ip = ip[:-1]
-                elif e.unicode.isprintable():  # Добавляем только печатные символы
-                    ip += e.unicode
-
-        pygame.display.update()
-        
-        if ip != '' and stop:
-            try:    
-                sock, local_player = connect_to_server(players, ip)
-                if sock == local_player == None:
-                    raise Exception 
-            except Exception:
-                error_text = font_start.render("ВВЕДЕН НЕВЕРНЫЙ IP:", True, (255, 0, 0))
-                print(sock, local_player)
-                screen.blit(error_text, (0,0))
-                pygame.display.update()
-                ip = ''
-                pygame.time.wait(1000)
-            else:
-                start_screen = False
-                game = True
-        
-        clock.tick(60)
     
+    game, sock, local_player = startscreen()
     bg_surf = pygame.image.load("data/images/background.jpg").convert()
     bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
     center_rect = reset_game()
@@ -180,11 +217,9 @@ def main():
     # Инициализация самой игры(соновного цикла)
     try:
         while game:
-            
             # Отрисовка
             screen.blit(bg_surf, (0,0))     
             screen.blit(center_surf, center_rect) 
-            
             # Отрисовка всех игроков
             for player in players:
                 if player.alive:  # Отрисовываем только живых игроков
@@ -200,8 +235,8 @@ def main():
             
             if local_player.alive:
                 pygame.draw.polygon(screen, (40, 255, 40), 
-                    [[local_player.rect.x + 80, local_player.rect.y - 50], [local_player.rect.x + 100, local_player.rect.y - 50], 
-                     [local_player.rect.x + 90, local_player.rect.y - 20]])
+                    [[local_player.rect.x + (local_player.rect.width / 2) - 12, local_player.rect.y - 50], [local_player.rect.x + (local_player.rect.width / 2) + 12, local_player.rect.y - 50], 
+                     [local_player.rect.x + (local_player.rect.width / 2), local_player.rect.y - 20]])
             
             draw_score()
 
@@ -311,7 +346,7 @@ def main():
                 sock.sendall(pickle.dumps(player_data))
                 
                 try:
-                    data = sock.recv(8192)
+                    data = sock.recv(16384)
                     if data:
                         try:  # Добавляем обработку ошибки здесь
                             game_state = pickle.loads(data)
@@ -359,7 +394,7 @@ def main():
                                         if p_data["id"] != local_player.id_p:
                                             if p_data["id"] not in other_players:
                                                 spawn_data = get_spawn_position(p_data["id"])
-                                                new_player = Player(p_data["x"], p_data["y"], players, spawn_data["team"])
+                                                new_player = Player(p_data["x"], p_data["y"], players, spawn_data["team"], p_data['skin_player'], p_data['skin_hook'])
                                                 new_player.set_id(p_data["id"])
                                                 other_players[p_data["id"]] = new_player
                                                 players.add(new_player)
@@ -371,7 +406,7 @@ def main():
                                                 player.alive = p_data["alive"]
                                                 player.direction = p_data['player_direction']
                                                 player.hook.direction = p_data['hook_direction']
-                                                player.hook.image = pygame.image.load(f'data/images/hook_{player.hook.direction}.png') # Changed this line
+                                                player.hook.image = pygame.image.load(f'data/images/hook_{player.hook.skin}_{player.hook.direction}.png') # Changed this line
                                                 # Проверяем попадание в других игроков
                                                 if (p_data["hook_hit_player"] is not None and 
                                                     p_data["hook_hit_player"] == player.id_p and 

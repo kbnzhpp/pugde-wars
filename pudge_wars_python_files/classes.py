@@ -3,15 +3,17 @@ from config import *
 from time import *
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, group, team):
+    def __init__(self, x, y, group, team, skin, skin_hook):
         super().__init__(group)
-        self.image = pygame.image.load("data/images/pudge_right.png").convert_alpha()
+        self.skin = skin
+        self.direction = 'right'
+        self.image = pygame.image.load(f"data/images/pudge_{self.skin}_{self.direction}.png").convert_alpha()
         self.rect = self.image.get_rect(topleft=(x, y))
-        self.hitbox = self.rect.inflate(-50, -40)
+        self.hitbox = pygame.rect.Rect(self.rect.x, self.rect.y - self.rect.height / 2, 132, 80)
         self._id = None  # Приватное поле для ID
         self.team = team
         self.alive = True
-        self.hook = Hook(self)
+        self.hook = Hook(self, skin_hook)
         self.speed = MOVE_SPEED
         self.spawn_x = x  # Сохраняем начальную позицию
         self.spawn_y = y
@@ -19,8 +21,7 @@ class Player(pygame.sprite.Sprite):
         self.just_respawned = False  # Флаг для защиты только что возродившегося игрока
         self.group = group  # Сохраняем ссылку на группу
         self.last_hit_by = None  # Добавляем отслеживание последнего урона
-        self.direction = 'left'
-
+          
     @property
     def id_p(self):
         return self._id
@@ -38,9 +39,9 @@ class Player(pygame.sprite.Sprite):
         if self.hitbox.colliderect(center_rect):
             return True
             
-        for player in players:
-            if player != self and player.alive and self.hitbox.colliderect(player.hitbox):
-                return True
+        #for player in players:
+        #    if player != self and player.alive and self.hitbox.colliderect(player.hitbox):
+        #        return True
         return False
 
     def move(self, left, right, up, down, center_rect, players, fps):
@@ -59,14 +60,10 @@ class Player(pygame.sprite.Sprite):
         prev_hitbox_y = self.hitbox.y
 
         if left:
-            self.rect.x -= self.speed
-            self.hitbox.x = self.rect.x + 25
-            #self.image = pygame.image.load("data/images/pudge_left.png").convert_alpha()
+            self.hitbox.x -= self.speed
             self.direction = 'left'
         if right:
-            self.rect.x += self.speed
-            self.hitbox.x = self.rect.x + 25
-            #self.image = pygame.image.load("data/images/pudge_right.png").convert_alpha()
+            self.hitbox.x += self.speed
             self.direction = 'right'
             
         # Проверяем коллизии по X
@@ -76,21 +73,20 @@ class Player(pygame.sprite.Sprite):
                 
         # Обновляем координаты по Y
         if up:
-            self.rect.y -= self.speed
-            self.hitbox.y = self.rect.y + 20
+            self.hitbox.y -= self.speed
         if down:
-            self.rect.y += self.speed
-            self.hitbox.y = self.rect.y + 20
+            self.hitbox.y += self.speed
 
-        
         # Проверяем коллизии по Y
         if self.check_collisions(center_rect, players, 'y'):
             self.rect.y = prev_y
             self.hitbox.y = prev_hitbox_y
         
         # Ограничиваем движение в пределах экрана
-        self.rect.x = max(0, min(self.rect.x, WIDTH - self.rect.width))
-        self.rect.y = max(40, min(self.rect.y, HEIGHT - self.rect.height))
+        self.hitbox.x = max(0, min(self.hitbox.x, WIDTH - self.hitbox.width))
+        self.hitbox.y = max(40, min(self.hitbox.y, HEIGHT - self.hitbox.height))
+
+        self.rect.center = self.hitbox.center
 
     def kill(self):
         """Убивает игрока и запускает таймер респавна"""
@@ -106,12 +102,12 @@ class Player(pygame.sprite.Sprite):
     def update(self):
         """Обновляет состояние игрока"""
         current_time = pygame.time.get_ticks()
-        self.image = pygame.image.load(f'data/images/pudge_{self.direction}.png')
+        self.image = pygame.image.load(f'data/images/pudge_{self.skin}_{self.direction}.png')
 
         if not self.alive and self.respawn_timer > 0:
             time_passed = current_time - self.respawn_timer
             
-            if time_passed >= len(self.group) * 1000:  # 1.5 секунды
+            if time_passed >= 2500:  # 1.5 секунды
                 self.hook.hit_player_id
                 self.alive = True
                 self.respawn_timer = 0
@@ -119,11 +115,12 @@ class Player(pygame.sprite.Sprite):
                 self.hitbox.center = (self.spawn_x, self.spawn_y)
 
 class Hook(pygame.sprite.Sprite):
-    def __init__(self, player):
+    def __init__(self, player, skin):
         super().__init__()
         self.player = player
         self.direction = 'right'
-        self.image = pygame.image.load(f'data/images/hook_{self.direction}.png').convert_alpha()
+        self.skin = skin
+        self.image = pygame.image.load(f'data/images/hook_{self.skin}_{self.direction}.png').convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.center = player.rect.center
         self.target_position = None
@@ -147,7 +144,7 @@ class Hook(pygame.sprite.Sprite):
         current_time = pygame.time.get_ticks()
 
         timer = current_time - self.cooldown
-        if timer >= 5000:
+        if timer >= HOOK_COOLDOWN:
             self.cooldown = 0
 
         if self.active and self.target_position and self.player.alive:
@@ -162,7 +159,7 @@ class Hook(pygame.sprite.Sprite):
             else:
                 self.direction = 'right'
 
-            self.image = pygame.image.load(f'data/images/hook_{self.direction}.png')
+            self.image = pygame.image.load(f'data/images/hook_{self.skin}_{self.direction}.png')
             # Нормализуем вектор
             distance = (dx**2 + dy**2)**0.5
             traveled_distance = ((self.pos_x - self.start_position[0])**2 + 
@@ -218,13 +215,122 @@ class Hook(pygame.sprite.Sprite):
                 8  # Толщина линии
             )
 
-def Button():
-    def __init__(self, x, y, width, height):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-
+class Button:
+    def __init__(self, x, y, width, height, main_color, secondary_color, font, action=None, image=None, text=""):
+        self.rect = pygame.rect.Rect(x, y, width, height)
+        self.main_color = main_color
+        self.secondary_color = secondary_color
+        self.font = font
+        self.action = action
+        self.image = image
+        self.text = text
+        self.hovered = False
+        self.clicked = False
+        
     def draw(self, surface):
-        pass
-    
+        # Get current mouse position
+        mouse_pos = pygame.mouse.get_pos()
+        self.hovered = self.rect.collidepoint(mouse_pos)
+        
+        # Change color based on state
+        color = self.secondary_color if self.hovered else self.main_color
+        
+        # Draw button
+        pygame.draw.rect(surface, color, self.rect)
+        pygame.draw.rect(surface, (0, 0, 0), self.rect, 2)
+
+        if self.text:
+            text_surf = self.font.render(self.text, True, (0, 0, 0))
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            surface.blit(text_surf, text_rect)
+
+        if self.image:
+            img_rect = self.image.get_rect(centery=self.rect.centery, right=self.rect.right - 10)
+            surface.blit(self.image, img_rect)
+        
+    def click(self, event):
+        # Check if mouse is over button and clicked
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.hovered:
+                if self.action:
+                    self.action()
+                    return True
+        return False
+
+class Panel:
+    def __init__(self):
+        self.open = False
+        self.buttons = []  # Store buttons for event handling
+
+    def draw_section(self, surface, title, items, rect, selected_attr, font):
+        """Updated draw_section using Button class"""
+        pygame.draw.rect(surface, (220, 220, 220), rect)
+        pygame.draw.rect(surface, (0, 0, 0), rect, 1)
+
+        title_text = font.render(title, True, (0, 0, 0))
+        surface.blit(title_text, (rect.x + 10, rect.y + 10))
+
+        button_height = 60
+        buttons_in_section = []
+
+        for i, (skin_name, skin_image) in enumerate(items.items()):
+            # Wrap setattr in lambda to delay execution
+            action = lambda s=skin_name: setattr(self, selected_attr, s)
+            
+            button = Button(
+                x=rect.x + 10,
+                y=rect.y + 40 + i * (button_height + 5),
+                width=rect.width - 20,
+                height=button_height,
+                main_color=(255, 255, 255),
+                secondary_color=(200, 200, 200),
+                font=font,
+                action=action,  # Pass the wrapped action
+                image=pygame.transform.scale(skin_image, (50, 50)),
+                text=skin_name
+            )
+            button.draw(surface)
+            buttons_in_section.append(button)
+            
+        return buttons_in_section
+
+class SkinPanel(Panel):
+    def __init__(self, skins_pudge, skins_hook, font, inscription):
+        super().__init__()
+        self.items_pudge = skins_pudge
+        self.items_hook = skins_hook
+        self.selected_player_skin = 'default'
+        self.selected_hook_skin = 'default'
+        self.pudge_buttons = []
+        self.hook_buttons = []
+        self.name = inscription
+        self.name_font = font
+
+    def toggle_panel(self):
+        """Changing panel state"""
+        self.open = not self.open
+
+    def draw_panel(self, surface):
+        if not self.open:
+            return
+
+        panel_rect = pygame.Rect(50, 50, 500, 400)
+        pygame.draw.rect(surface, (200, 200, 200), panel_rect)
+        pygame.draw.rect(surface, (0, 0, 0), panel_rect, 2)
+
+        # Draw sections and store their buttons
+        section_font = pygame.font.Font(None, 30)
+        player_section = pygame.Rect(panel_rect.x + 10, panel_rect.y + 50, 230, 300)
+        hook_section = pygame.Rect(panel_rect.x + 260, panel_rect.y + 50, 230, 300)
+        title = self.name_font.render(self.name, True, (0, 0, 0))
+        surface.blit(title, (panel_rect.x + 10, panel_rect.y + 10))
+
+        self.pudge_buttons = self.draw_section(surface, "Игрок", self.items_pudge, player_section, "selected_player_skin", section_font)
+        self.hook_buttons = self.draw_section(surface, "Хук", self.items_hook, hook_section, "selected_hook_skin", section_font)
+
+    def handle_event(self, event):
+        if self.open and event.type == pygame.MOUSEBUTTONDOWN:
+            for button in self.pudge_buttons + self.hook_buttons:
+                if button.rect.collidepoint(event.pos):
+                    button.click(event)
+                    return True
+        return False
