@@ -115,15 +115,14 @@ class GameServer:
         self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind((HOST, PORT))
-        self.server.listen(6)
+        self.server.listen(10)
         print("[START] Сервер запущен...")
 
         while True:
             try:
-                if len(self.clients) < 6:
-                    conn, addr = self.server.accept()
-                    print(f"[CONNECT] Новое подключение: {addr}")
-                    Thread(target=self.handle_client, args=(conn, addr)).start()
+                conn, addr = self.server.accept()
+                print(f"[CONNECT] Новое подключение: {addr}")
+                Thread(target=self.handle_client, args=(conn, addr)).start()
                     
             except Exception as e:
                 print(f"[ERROR] Ошибка при принятии подключения: {e}")

@@ -10,3 +10,12 @@ beta 1.1.1:
 
 * synchronization of player's and hook's directions
 * added colldown on hook ( 5 seconds)
+
+beta 1.2:
+
+* skins added
+* pudge skill colldown showed on hud panel
+* added returning to main menu
+* config now showed on startscreen
+* fixed 6 players fps throw
+* your spawn place doent not depend on id number, its now randomly, and spawns arent dynamic(spawns fixed to player) 

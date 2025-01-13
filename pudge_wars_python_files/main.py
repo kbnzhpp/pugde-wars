@@ -56,21 +56,7 @@ def reset_game():
     center_rect = pygame.Rect(WIDTH // 2 - 50, 0, 100, HEIGHT)
     return center_rect
 
-def main():
-    """Main function of game"""
-    def draw_score():
-        font = pygame.font.Font(None, 50)
-        team1_text = font.render(f"БАРЕБУХИ: {team_kills[1]}", True, (0, 250, 154))
-        team2_text = font.render(f"АБАЛДУИ: {team_kills[2]}", True, (255, 228, 181))
-        fps = font.render(f"FPS: {clock.get_fps():.2f}", True, (255, 255, 255))
-        scoreboard = pygame.Surface((WIDTH, 50))
-        scoreboard.fill((50, 50, 50))
-        screen.blit(scoreboard, (0, 0))
-        screen.blit(team1_text, (10, 10))
-        screen.blit(team2_text, (WIDTH - 250, 10))
-        screen.blit(fps, (WIDTH - 500, 10))
-
-    def connect_to_server(players, ip_, skin_player, skin_hook):
+def connect_to_server(players, ip_, skin_player, skin_hook):
         """Подключение к серверу и создание игрока"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -98,7 +84,31 @@ def main():
         except ConnectionRefusedError:
             print("Не удалось подключиться к серверу")
             return None, None
-    
+        
+def main():
+    """Main function of game"""
+    def draw_hud(local_player):
+        font = pygame.font.Font(None, 50)
+        team1_text = font.render(f"БАРЕБУХИ: {team_kills[1]}", True, (0, 250, 154))
+        team2_text = font.render(f"АБАЛДУИ: {team_kills[2]}", True, (255, 228, 181))
+        fps = font.render(f"FPS: {clock.get_fps():.2f}", True, (255, 255, 255))
+        hook_cooldown_time = font.render(str(int(HOOK_COOLDOWN / 1000 - local_player.hook.timer // 1000)), True, (255, 255, 255)) if local_player.hook.cooldown != 0 else font.render('', True, (255, 255, 255))
+        hook_cooldown_image = pygame.image.load('data/images/hook_skill_image.png') if local_player.hook.cooldown == 0 else pygame.image.load('data/images/hook_skill_image_dark.png')
+
+        scoreboard = pygame.Surface((WIDTH, 50))
+        scoreboard.fill((50, 50, 50))
+
+        skillboard = pygame.Surface((400, 100))
+        skillboard.fill((50, 50, 50))
+
+        screen.blit(scoreboard, (0, 0))
+        screen.blit(skillboard, (WIDTH / 2 - 200, HEIGHT - 100))
+        screen.blit(team1_text, (10, 10))
+        screen.blit(team2_text, (WIDTH - 250, 10))
+        screen.blit(fps, (WIDTH - 500, 10))
+        screen.blit(hook_cooldown_image, (WIDTH / 2 - 190, HEIGHT - 90))
+        screen.blit(hook_cooldown_time, (WIDTH / 2 - 162, HEIGHT - 70))
+
     def startscreen():
         """Start screen func"""
         start_screen = True
@@ -106,14 +116,19 @@ def main():
         ip = ''
         skins_pudge = { 
             'default' : pygame.image.load('data/images/pudge_default_right.png'),
-            'pig' : pygame.image.load('data/images/pudge_pig_right.png')
+            'pig' : pygame.image.load('data/images/pudge_pig_right.png'),
+            'steve' : pygame.image.load('data/images/pudge_steve_right.png'),
+            'roblox' : pygame.image.load('data/images/pudge_roblox_right.png'),
         }   
         skins_hook = {
             'default' : pygame.image.load('data/images/hook_default_right.png'), 
-            'chesters' : pygame.image.load('data/images/hook_chesters_right.png')
+            'chesters' : pygame.image.load('data/images/hook_chesters_right.png'),
+            'float' : pygame.image.load('data/images/hook_float_right.png'),
+            'dragclaw' : pygame.image.load('data/images/hook_dragclaw_right.png'),
         }
         font_skin_panel = pygame.font.Font(None, 39)
-        skin_panel = SkinPanel(skins_pudge, skins_hook, font_skin_panel, 'СКИНЫ')
+        font_config = pygame.font.Font(None, 25)
+        skin_panel = SkinPanel(skins_pudge, skins_hook, font_skin_panel, 'СКИНЫ', 530, 500)
         skin_pudge = skin_panel.selected_player_skin
         skin_hook = skin_panel.selected_hook_skin
         bg_surf = pygame.image.load("data/images/start_bg.jpeg").convert()
@@ -133,11 +148,12 @@ def main():
             None,
             "СКИНЫ"
             )
+        config = ['Параметры:', 'Ходить - WASD', 'Хук - Q', 'Радиус хука - ALT', 'Выйти в главное меню - ESC + ENTER']
+        
         # Инициализация стартового экрана
         while start_screen:
             start_text = font_start.render("ВВЕДИТЕ IP СЕРВЕРА:", True, (81, 255, 149))
             ip_text = font_start.render(ip, True, (0, 0, 0))
-            
 
             screen.blit(bg_surf, (0, 0))
             screen.blit(ip_text, ((WIDTH // 2) - 200, (HEIGHT // 2) - 300))
@@ -145,6 +161,10 @@ def main():
             button_skins.draw(screen)
             skin_panel.draw_panel(screen)
         
+            for i, string in enumerate(config):
+                a = font_config.render(string, True, (255, 255, 255))
+                screen.blit(a, (10, 10 + i * 20))
+
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     pygame.quit()
@@ -166,6 +186,16 @@ def main():
             pygame.display.update()
 
             if ip != '' and stop:
+                last_ip = ip
+                if ip == 'pipindrik' and 'amogus' not in skins_pudge.keys():
+                    skins_pudge['amogus'] = pygame.image.load('data/images/pudge_amogus_right.png')
+                    congrats_text = font_start.render("ПОЗДРАВЛЯЕМ! ВЫ ПОЛУЧИЛИ НАГРАДУ", True, (15, 255, 20))
+                    screen.blit(congrats_text, (0,0))
+                    pygame.display.update()
+                    ip = ''
+                    stop = False
+                    pygame.time.wait(700)
+                    continue
                 try:    
                     sock, local_player = connect_to_server(players, ip, skin_pudge, skin_hook)
                     if sock == local_player == None:
@@ -181,7 +211,6 @@ def main():
                     start_screen = False
                     game = True
                     return game, sock, local_player
-        
             clock.tick(60)
 
     pygame.init()
@@ -195,7 +224,7 @@ def main():
     sock = None
     other_players = {}
     game = False
-    
+
     game, sock, local_player = startscreen()
     bg_surf = pygame.image.load("data/images/background.jpg").convert()
     bg_surf = pygame.transform.scale(bg_surf, (screen.get_width(), screen.get_height()))
@@ -242,7 +271,7 @@ def main():
                     [[local_player.rect.x + (local_player.rect.width / 2) - 12, local_player.rect.y - 50], [local_player.rect.x + (local_player.rect.width / 2) + 12, local_player.rect.y - 50], 
                      [local_player.rect.x + (local_player.rect.width / 2), local_player.rect.y - 20]])
             
-            draw_score()
+            draw_hud(local_player)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -266,7 +295,7 @@ def main():
                 if event.type == pygame.WINDOWFOCUSLOST:
                     continue
                 
-                if event.type == pygame.KEYDOWN: # Движение
+                if event.type == pygame.KEYDOWN:
                     if event.key == ord('w'):
                         up = True
                     if event.key == ord('a'):
@@ -280,7 +309,6 @@ def main():
                             local_player.hook.launch(pygame.mouse.get_pos())
                     if event.key == pygame.K_LALT:
                         show_hook_radius = True
-                        fps = 60
 
                 if event.type == pygame.KEYUP: # Остановка движения
                     if event.key == ord('w'):
@@ -295,6 +323,30 @@ def main():
                         show_hook_radius = False
                         fps = 0
             
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_ESCAPE] and keys[pygame.K_RETURN]:
+                dark = pygame.Surface((WIDTH, HEIGHT))
+                dark.fill((0, 0, 0))
+                dark.set_alpha(0.5)
+                screen.blit(dark, (0,0))
+                font_confirm = pygame.font.Font(None, 70)
+                text_confirm = font_confirm.render('Вы хотите выйти в главное меню?', True, (255, 255, 255))
+                
+                disconnect_data = {"disconnect": True, "id": local_player.id_p}
+                try:
+                    sock.sendall(pickle.dumps(disconnect_data))
+                except:
+                    pass
+                finally:
+                    # Очищаем ресурсы без вызова kill()
+                    for player in players:
+                        player.alive = False  # Просто отмечаем как неживого
+                    players.empty()
+                    other_players.clear()
+                    sock.close()
+                game = False
+                game, sock, local_player = startscreen()
+
             if local_player:
                 local_player.update()
                 if local_player.alive:

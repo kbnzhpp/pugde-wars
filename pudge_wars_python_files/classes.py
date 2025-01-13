@@ -1,6 +1,7 @@
 import pygame
 from config import *
 from time import *
+import math
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y, group, team, skin, skin_hook):
@@ -21,7 +22,7 @@ class Player(pygame.sprite.Sprite):
         self.just_respawned = False  # Флаг для защиты только что возродившегося игрока
         self.group = group  # Сохраняем ссылку на группу
         self.last_hit_by = None  # Добавляем отслеживание последнего урона
-          
+
     @property
     def id_p(self):
         return self._id
@@ -130,7 +131,8 @@ class Hook(pygame.sprite.Sprite):
         self.pos_y = self.rect.centery
         self.hit_player_id = None  # ID игрока, в которого попали\
         self.cooldown = 0
-        
+        self.timer = 0
+
     def launch(self, target_pos):
         if not self.active and not self.returning and self.player.alive and self.cooldown == 0:
             self.active = True
@@ -143,8 +145,8 @@ class Hook(pygame.sprite.Sprite):
     def update(self):
         current_time = pygame.time.get_ticks()
 
-        timer = current_time - self.cooldown
-        if timer >= HOOK_COOLDOWN:
+        self.timer = current_time - self.cooldown
+        if self.timer >= HOOK_COOLDOWN:
             self.cooldown = 0
 
         if self.active and self.target_position and self.player.alive:
@@ -294,7 +296,7 @@ class Panel:
         return buttons_in_section
 
 class SkinPanel(Panel):
-    def __init__(self, skins_pudge, skins_hook, font, inscription):
+    def __init__(self, skins_pudge, skins_hook, font, inscription, panel_w, panel_h):
         super().__init__()
         self.items_pudge = skins_pudge
         self.items_hook = skins_hook
@@ -304,6 +306,8 @@ class SkinPanel(Panel):
         self.hook_buttons = []
         self.name = inscription
         self.name_font = font
+        self.panel_w = panel_w
+        self.panel_h = panel_h
 
     def toggle_panel(self):
         """Changing panel state"""
@@ -313,14 +317,14 @@ class SkinPanel(Panel):
         if not self.open:
             return
 
-        panel_rect = pygame.Rect(50, 50, 500, 400)
+        panel_rect = pygame.Rect(WIDTH - 550, 50, self.panel_w, self.panel_h)
         pygame.draw.rect(surface, (200, 200, 200), panel_rect)
         pygame.draw.rect(surface, (0, 0, 0), panel_rect, 2)
 
         # Draw sections and store their buttons
         section_font = pygame.font.Font(None, 30)
-        player_section = pygame.Rect(panel_rect.x + 10, panel_rect.y + 50, 230, 300)
-        hook_section = pygame.Rect(panel_rect.x + 260, panel_rect.y + 50, 230, 300)
+        player_section = pygame.Rect(panel_rect.x + 10, panel_rect.y + 50, 250, 400)
+        hook_section = pygame.Rect(panel_rect.x + 10 + 260, panel_rect.y + 50, 250, 400)
         title = self.name_font.render(self.name, True, (0, 0, 0))
         surface.blit(title, (panel_rect.x + 10, panel_rect.y + 10))
 
