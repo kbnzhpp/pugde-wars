@@ -129,7 +129,6 @@ class GameServer:
 
     def restart(self):
         print("[RESTART] Сервер перезапущен...")
-        
         try:
             # Сразу запускаем bat-файл
             import subprocess
@@ -141,6 +140,6 @@ class GameServer:
             print(f"[ERROR] Ошибка при запуске рестарта: {e}")
             os._exit(1)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     server = GameServer()
     server.start()

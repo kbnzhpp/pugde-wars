@@ -6,10 +6,13 @@ To start game with friend one of you need to oper server.exe, then start game on
 
 Game goes until one of teams get 50 kills, then game restarts on all pcs, server restars on pc with server.exe opened
 
-beta 1.1.1:
+beta 1.3:
 
-* synchronization of player's and hook's directions
-* added colldown on hook ( 5 seconds)
+* added main menu
+* new skins(jett as player and valorant knife as hook)
+* added automatic server starting
+* new interface
+* small misc changes
 
 beta 1.2:
 
@@ -19,3 +22,11 @@ beta 1.2:
 * config now showed on startscreen
 * fixed 6 players fps throw
 * your spawn place doent not depend on id number, its now randomly, and spawns arent dynamic(spawns fixed to player) 
+
+beta 1.1.1:
+
+* synchronization of player's and hook's directions
+* added colldown on hook ( 5 seconds)
+
+
+
